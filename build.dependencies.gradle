@@ -2,6 +2,7 @@ repositories {
     mavenCentral()
     google() // Needed for androidx
     maven { url = "https://mymaven.bylazar.com/releases" }
+    maven { url = "https://maven.brott.dev/" }
 }
 
 dependencies {
@@ -19,5 +20,9 @@ dependencies {
     implementation 'com.pedropathing:telemetry:1.0.0'
     implementation 'com.bylazar:fullpanels:1.0.12'
     implementation 'com.pedropathing:ivy:1.0.0'
-}
+    implementation 'com.acmerobotics.dashboard:dashboard:0.5.1'
+    implementation('com.github.haifengl:smile-interpolation:2.6.0') {
+        exclude group: 'org.slf4j', module: 'slf4j-api'
+    }
 
+}
