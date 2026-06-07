@@ -24,8 +24,8 @@ public class Constants {
     public static double driveHeadingKd = 0.09;
     public static double driveHeadingKf = 0;
     public static double gateOpenHeadingDegrees = 36.5;
-    public static double teleOpStartX = 0;
-    public static double teleOpStartY = 0;
+    public static double teleOpStartX = 72;
+    public static double teleOpStartY = 72;
     public static double teleOpStartHeadingDegrees = 0;
 
     /* -------------------------------------------- CAMERA CONSTANTS -------------------------------------------- */
@@ -65,6 +65,11 @@ public class Constants {
     public static int shooterVelocityTolerance = 25;
     public static boolean shooterOverride = false;
     public static double shooterOverrideTarget = 1000;
+    public static double shooterPowerSign = -1.0;
+    public static boolean shooterTopReversed = true;
+    public static boolean shooterBottomReversed = true;
+    public static boolean shooterTopEnabled = true;
+    public static boolean shooterBottomEnabled = true;
 
     public static double frontShotVelocity = 1000;
     public static double farShotVelocity = 1600;
@@ -110,13 +115,14 @@ public class Constants {
     public static double turretIncrementDegrees = 2.5;
     public static double turretHomedAngleDegrees = 145;
     public static double turretMinAngleDegrees = -90;
-    public static double turretMaxAngleDegrees = 90;
+    public static double turretMaxAngleDegrees = 270;
     public static double turretMinServoPosition = 0.0;
     public static double turretMaxServoPosition = 1.0;
     public static double turretDisabledServoPosition = 0.0;
     public static double turretForwardOffsetInches = 0;
     public static double turretLeftOffsetInches = -2.19;
     public static double turretMinimumAutoAimAngleDegrees = -90;
+    public static boolean turretEncoderReversed = false;
 
     public static double deadbandDeg = 0;
     public static double errAlpha = 0.35;

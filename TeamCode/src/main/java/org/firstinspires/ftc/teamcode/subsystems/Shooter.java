@@ -2,6 +2,7 @@ package org.firstinspires.ftc.teamcode.subsystems;
 
 import com.pedropathing.ivy.Command;
 import com.qualcomm.robotcore.hardware.Servo;
+import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.DcMotorSimple;
 import com.qualcomm.robotcore.util.Range;
@@ -31,10 +32,27 @@ public class Shooter {
         flywheelMotorTop = robot.hardwareMap.get(DcMotorEx.class, HardwareNames.flywheelTop);
         flywheelMotorBottom = robot.hardwareMap.get(DcMotorEx.class, HardwareNames.flywheelBottom);
         adjustableHood = robot.hardwareMap.get(Servo.class, HardwareNames.adjustableHood);
-        flywheelMotorBottom.setDirection(DcMotorSimple.Direction.REVERSE);
+        initMotor(flywheelMotorTop);
+        initMotor(flywheelMotorBottom);
+        applyMotorDirections();
 
         telemetry = robot.telemetry;
         drivetrain = robot.drivetrain;
+    }
+
+    private void initMotor(DcMotorEx motor) {
+        motor.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
+        motor.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+        motor.setPower(0);
+    }
+
+    private void applyMotorDirections() {
+        flywheelMotorTop.setDirection(motorDirection(Constants.shooterTopReversed));
+        flywheelMotorBottom.setDirection(motorDirection(Constants.shooterBottomReversed));
+    }
+
+    private DcMotorSimple.Direction motorDirection(boolean reversed) {
+        return reversed ? DcMotorSimple.Direction.REVERSE : DcMotorSimple.Direction.FORWARD;
     }
 
     public void setTarget(double target) {
@@ -53,8 +71,8 @@ public class Shooter {
     }
 
     private void setPower(double power) {
-        flywheelMotorTop.setPower(power);
-        flywheelMotorBottom.setPower(power);
+        flywheelMotorTop.setPower(Constants.shooterTopEnabled ? power : 0);
+        flywheelMotorBottom.setPower(Constants.shooterBottomEnabled ? power : 0);
     }
 
     private void setVelocity(double tps) {
@@ -127,11 +145,12 @@ public class Shooter {
         return infinite(() -> {
             com.pedropathing.geometry.Pose turretPose = TurretLocation.getTurretPose(drivetrain.getPose());
             double goalDistance = WaveLength.getDistanceToGoal(turretPose, Alliance.current);
+            applyMotorDirections();
 
             if (on) {
                 target = Constants.shooterOverride ? Math.abs(Constants.shooterOverrideTarget) : (tempOverride ? target : WaveLength.getVelocityWithInterpolation(turretPose, Alliance.current));
                 hoodTarget = hoodOverride ? hoodTarget : WaveLength.getHoodWithInterpolation(turretPose, Alliance.current);
-                setPower(flywheelPIDF(
+                double pidPower = flywheelPIDF(
                         target,
                         getVelocity(),
                         Constants.shooterKp,
@@ -139,7 +158,8 @@ public class Shooter {
                         Constants.shooterKd,
                         Constants.shooterKv,
                         Constants.shooterKs
-                ));
+                );
+                setPower(Range.clip(Math.signum(Constants.shooterPowerSign) * Math.max(0, pidPower), -1, 1));
             } else {
                 target = 0;
                 hoodTarget = Constants.adjHoodMin;
@@ -149,9 +169,13 @@ public class Shooter {
             adjustableHood.setPosition(Range.clip(hoodTarget, Constants.adjHoodMax, Constants.adjHoodMin));
 
             telemetry.addData("Shooter Distance", goalDistance);
+            telemetry.addData("Shooter On", on);
+            telemetry.addData("Shooter Top Enabled", Constants.shooterTopEnabled);
+            telemetry.addData("Shooter Bottom Enabled", Constants.shooterBottomEnabled);
             telemetry.addData("Flywheel Velocity", getVelocity());
             telemetry.addData("Flywheel Target", target);
-            telemetry.addData("Flywheel Power", flywheelMotorBottom.getPower());
+            telemetry.addData("Flywheel Top Power", flywheelMotorTop.getPower());
+            telemetry.addData("Flywheel Bottom Power", flywheelMotorBottom.getPower());
             telemetry.addData("Hood Target", hoodTarget);
             telemetry.addData("Hood Position", adjustableHood.getPosition());
         });
