@@ -1,30 +1,25 @@
 package org.firstinspires.ftc.teamcode.subsystems;
 
-import com.acmerobotics.dashboard.config.Config;
 import com.pedropathing.ivy.Command;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
 import org.firstinspires.ftc.robotcore.external.Telemetry;
 import org.firstinspires.ftc.robotcore.external.navigation.CurrentUnit;
 import org.firstinspires.ftc.teamcode.robot.Robot;
+import org.firstinspires.ftc.teamcode.util.Constants;
+import org.firstinspires.ftc.teamcode.util.HardwareNames;
 
 import static com.pedropathing.ivy.commands.Commands.*;
 
-@Config
 public class Intake {
     private boolean slowMode = false;
     private Mode mode = Mode.OFF;
-    public static double fastPower = -1;
-    public static double slowPower = -1;
-    public static double offPower = 0;
-    public static double reversePower = 1;
-    public static double shortReverseTimeMs = 150;
 
     private final DcMotorEx intakeMotor;
 
     private final Telemetry telemetry;
 
     public Intake(Robot robot) {
-        intakeMotor = robot.hardwareMap.get(DcMotorEx.class, "intake");
+        intakeMotor = robot.hardwareMap.get(DcMotorEx.class, HardwareNames.intake);
         telemetry = robot.telemetry;
     }
 
@@ -40,7 +35,7 @@ public class Intake {
     }
 
     public Command shortReverse() {
-        return reverse().then(waitMs(shortReverseTimeMs)).then(on());
+        return reverse().then(waitMs(Constants.intakeShortReverseTimeMs)).then(on());
     }
 
     public Command toggle() {
@@ -61,13 +56,13 @@ public class Intake {
         return infinite(() -> {
             switch (mode) {
                 case ON:
-                    intakeMotor.setPower(slowMode ? slowPower : fastPower);
+                    intakeMotor.setPower(slowMode ? Constants.intakeSlowPowerClose : Constants.intakeFastPower);
                     break;
                 case OFF:
-                    intakeMotor.setPower(offPower);
+                    intakeMotor.setPower(Constants.intakeOffPower);
                     break;
                 case REVERSE:
-                    intakeMotor.setPower(reversePower);
+                    intakeMotor.setPower(Constants.intakeReversePower);
                     break;
             }
 

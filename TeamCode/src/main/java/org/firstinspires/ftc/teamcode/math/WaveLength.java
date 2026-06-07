@@ -1,68 +1,82 @@
 package org.firstinspires.ftc.teamcode.math;
 
 import com.pedropathing.geometry.Pose;
+
 import org.firstinspires.ftc.teamcode.robot.Alliance;
+
 import smile.interpolation.BilinearInterpolation;
 import smile.interpolation.Interpolation2D;
 
 import static org.firstinspires.ftc.teamcode.math.PoseMirror.mirror;
 
 public class WaveLength {
-    private static final Interpolation2D farInterpolation = new BilinearInterpolation(
-            new double[]{43, 71, 100},
-            new double[]{6, 27},
+    private static final double[] FAR_X = new double[]{43, 71, 100};
+    private static final double[] FAR_Y = new double[]{6, 27};
+    private static final double[] CLOSE_X = new double[]{38, 61, 85};
+    private static final double[] CLOSE_Y = new double[]{63, 88, 111, 135.5};
+
+    private static final Interpolation2D farVelocityInterpolation = new BilinearInterpolation(
+            FAR_X,
+            FAR_Y,
             new double[][]{
                     {1675, 1640},
                     {1675, 1520},
                     {1620, 1520}
             });
 
-    private static final Interpolation2D farTurretInterpolation = new BilinearInterpolation(
-            new double[]{43, 71, 100},
-            new double[]{6, 27},
+    private static final Interpolation2D farHoodInterpolation = new BilinearInterpolation(
+            FAR_X,
+            FAR_Y,
             new double[][]{
-                    {55.2, 54},
-                    {61, 58},
-                    {79, 75}
+                    {0.47, 0.43},
+                    {0.37, 0.33},
+                    {0.31, 0.31}
             });
 
-    private static final Interpolation2D closeInterpolation = new BilinearInterpolation(
-            new double[]{38, 61, 85},
-            new double[]{135.5, 111, 88, 63},
+    private static final Interpolation2D closeVelocityInterpolation = new BilinearInterpolation(
+            CLOSE_X,
+            CLOSE_Y,
             new double[][]{
-                    {1400, 1430, 1470, 1520},
-                    {1375, 1380, 1390, 1415},
-                    {1338, 1325, 1330, 1350},
+                    {1520, 1470, 1430, 1400},
+                    {1415, 1390, 1380, 1375},
+                    {1350, 1330, 1325, 1338},
             }
     );
 
-    private static final Interpolation2D closeTurretInterpolation = new BilinearInterpolation(
-            new double[]{38, 61, 85},
-            new double[]{135.5, 111, 88, 63},
+    private static final Interpolation2D closeHoodInterpolation = new BilinearInterpolation(
+            CLOSE_X,
+            CLOSE_Y,
             new double[][]{
-                    {1.3, 2.8, 27.5, 37.5},
-                    {3, 16.5, 32, 45},
-                    {5.5, 28, 41, 56},
+                    {0.37, 0.38, 0.43, 0.47},
+                    {0.36, 0.37, 0.38, 0.43},
+                    {0.31, 0.33, 0.36, 0.38},
             }
     );
 
     public static double getVelocityWithInterpolation(Pose currentPosition, Alliance alliance) {
         Pose pose = alliance == Alliance.RED ? currentPosition : mirror(currentPosition);
-        if (currentPosition.getY() > 48) {
-            return closeInterpolation.interpolate(pose.getX(), pose.getY());
+        if (pose.getY() > 48) {
+            return closeVelocityInterpolation.interpolate(clampToTable(pose.getX(), CLOSE_X), clampToTable(pose.getY(), CLOSE_Y));
         } else {
-            return farInterpolation.interpolate(pose.getX(), pose.getY());
+            return farVelocityInterpolation.interpolate(clampToTable(pose.getX(), FAR_X), clampToTable(pose.getY(), FAR_Y));
         }
     }
 
-    public static double getAngleWithInterpolation(Pose currentPosition, Alliance alliance) {
+    public static double getHoodWithInterpolation(Pose currentPosition, Alliance alliance) {
         Pose pose = alliance == Alliance.RED ? currentPosition : mirror(currentPosition);
-        double angle;
-        if (currentPosition.getY() > 48) {
-            angle = closeTurretInterpolation.interpolate(pose.getX(), pose.getY());
+        if (pose.getY() > 48) {
+            return closeHoodInterpolation.interpolate(clampToTable(pose.getX(), CLOSE_X), clampToTable(pose.getY(), CLOSE_Y));
         } else {
-            angle = farTurretInterpolation.interpolate(pose.getX(), pose.getY());
+            return farHoodInterpolation.interpolate(clampToTable(pose.getX(), FAR_X), clampToTable(pose.getY(), FAR_Y));
         }
-        return alliance == Alliance.RED ? angle : 180 - angle;
+    }
+
+    public static double getDistanceToGoal(Pose currentPosition, Alliance alliance) {
+        Pose goal = alliance.goal;
+        return Math.hypot(goal.getX() - currentPosition.getX(), goal.getY() - currentPosition.getY());
+    }
+
+    private static double clampToTable(double value, double[] table) {
+        return Math.max(table[0], Math.min(table[table.length - 1], value));
     }
 }
