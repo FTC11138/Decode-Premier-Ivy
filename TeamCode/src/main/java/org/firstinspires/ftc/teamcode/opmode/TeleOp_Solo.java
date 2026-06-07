@@ -37,6 +37,7 @@ public class TeleOp_Solo extends RobotOpMode {
 
         llPoseResetter = new LLPoseResetter(hardwareMap);
         robot.drivetrain.usePreviousStartingPose();
+        robot.drivetrain.startTeleOpDrive();
         robot.drivetrain.setFieldCentricEnabled(true);
         robot.drivetrain.clearFieldCentricHeadingReset();
         robot.turret.usePreviousStartingAngle();
@@ -96,18 +97,18 @@ public class TeleOp_Solo extends RobotOpMode {
 
         robot.drivetrain.fieldCentricDrive(
                 -gamepad1.left_stick_y * Constants.driveForwardMultiplier,
-                gamepad1.left_stick_x * Constants.driveStrafeMultiplier,
-                gamepad1.right_stick_x * Constants.driveTurnMultiplier,
+                -gamepad1.left_stick_x * Constants.driveStrafeMultiplier,
+                -gamepad1.right_stick_x * Constants.driveTurnMultiplier,
                 Alliance.current
         );
 
         TractorBeam.aimTurret(robot.drivetrain.getPose(), robot, Alliance.current);
 
-        if (robot.drivetrain.getPose().getY() > Constants.intakeSlowPowerYThreshold) {
-            robot.intake.speedUp();
-        } else {
-            robot.intake.slowDown();
-        }
+//        if (robot.drivetrain.getPose().getY() > Constants.intakeSlowPowerYThreshold) {
+//            robot.intake.speedUp();
+//        } else {
+//            robot.intake.slowDown();
+//        }
 
         boolean leftTrigger = gamepad1.left_trigger > 0.25;
         if (leftTrigger && !gamepad1LeftTriggerWasDown) {

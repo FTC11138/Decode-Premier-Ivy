@@ -32,7 +32,8 @@ public class Turret {
     }
 
     private double getRawAngleDegrees() {
-        return turretEncoder.getCurrentPosition() / Constants.turretTicksPerRevolution * 360;
+        double direction = Constants.turretEncoderReversed ? -1.0 : 1.0;
+        return direction * turretEncoder.getCurrentPosition() / Constants.turretTicksPerRevolution * 360;
     }
 
     private double getAngleDegrees() {
@@ -64,7 +65,8 @@ public class Turret {
 
     public void home() {
         setAngleDegrees(Constants.turretHomedAngleDegrees);
-        setTargetDegrees(Constants.turretHomedAngleDegrees);
+        targetDegrees = Range.clip(Constants.turretHomedAngleDegrees, Constants.turretMinAngleDegrees, Constants.turretMaxAngleDegrees);
+        mode = Mode.POSITION;
     }
 
     public void moveLeft() {

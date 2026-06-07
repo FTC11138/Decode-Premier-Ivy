@@ -19,7 +19,7 @@ public class HardwareNames {
     public static String adjustableHood = "adjHood";
 
     public static String turretServo = "turret";
-    public static String turretEncoder = "turretEncoder";
+    public static String turretEncoder = "frontLeft";
 
     public static String spindexer = "spindexer";
     public static String ranger = "ranger";

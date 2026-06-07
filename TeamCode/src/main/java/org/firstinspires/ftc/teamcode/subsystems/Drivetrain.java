@@ -76,7 +76,7 @@ public class Drivetrain {
     }
 
     public void robotCentricDrive(double forward, double strafe, double turn) {
-        drive(forward, strafe, turn, 0, follower.getHeading());
+        drive(forward, strafe, turn, true, 0, follower.getHeading());
     }
 
     public void fieldCentricDrive(double forward, double strafe, double turn, Alliance alliance) {
@@ -85,10 +85,7 @@ public class Drivetrain {
             return;
         }
 
-        double headingRadians = follower.getHeading();
-        if (alliance == Alliance.BLUE) headingRadians += Math.PI;
-
-        drive(forward, strafe, turn, headingRadians - fieldCentricHeadingOffsetRadians, follower.getHeading());
+        drive(forward, strafe, turn, false, fieldCentricHeadingOffsetRadians, follower.getHeading());
     }
 
     public void arcadeDrive(double forward, double strafe, double turn, Alliance alliance) {
@@ -101,14 +98,18 @@ public class Drivetrain {
 
     public void resetFieldCentricHeading(Alliance alliance) {
         fieldCentricHeadingOffsetRadians = follower.getHeading();
-        if (alliance == Alliance.BLUE) fieldCentricHeadingOffsetRadians += Math.PI;
     }
 
     public void clearFieldCentricHeadingReset() {
         fieldCentricHeadingOffsetRadians = 0;
     }
 
-    private void drive(double forward, double strafe, double turn, double driveHeadingRadians, double robotHeadingRadians) {
+    public void startTeleOpDrive() {
+        follower.useCentripetal = false;
+        follower.startTeleopDrive();
+    }
+
+    private void drive(double forward, double strafe, double turn, boolean robotCentric, double headingOffsetRadians, double robotHeadingRadians) {
         forward = signedSquare(forward);
         strafe = signedSquare(strafe);
 
@@ -119,16 +120,13 @@ public class Drivetrain {
             turn = signedSquare(turn);
         }
 
-        double x = strafe * Math.cos(-driveHeadingRadians) - forward * Math.sin(-driveHeadingRadians);
-        double y = strafe * Math.sin(-driveHeadingRadians) + forward * Math.cos(-driveHeadingRadians);
-        y *= Constants.driveFieldCentricYMultiplier;
-
-        double denominator = Math.max(Math.abs(x) + Math.abs(y) + Math.abs(turn), 1);
-
-        frontLeft.setPower((y + x + turn) / denominator);
-        frontRight.setPower((y - x - turn) / denominator);
-        backLeft.setPower((y - x + turn) / denominator);
-        backRight.setPower((y + x - turn) / denominator);
+        follower.setTeleOpDrive(
+                forward * Constants.driveFieldCentricYMultiplier,
+                strafe,
+                turn,
+                robotCentric,
+                headingOffsetRadians
+        );
     }
 
     public Pose getPose() {
@@ -161,6 +159,7 @@ public class Drivetrain {
 
     public Command periodic() {
         return infinite(() -> {
+            org.firstinspires.ftc.teamcode.pedroPathing.Constants.applyTunableConstants();
             follower.update();
             poseTransfer = follower.getPose();
             poseTransferReady = true;
