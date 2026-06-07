@@ -1,37 +1,36 @@
 package org.firstinspires.ftc.teamcode.subsystems;
 
-import com.acmerobotics.dashboard.config.Config;
-
 import com.pedropathing.ivy.Command;
+import com.qualcomm.robotcore.hardware.Servo;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.DcMotorSimple;
+import com.qualcomm.robotcore.util.Range;
 import org.firstinspires.ftc.robotcore.external.Telemetry;
 import org.firstinspires.ftc.teamcode.math.TurretLocation;
 import org.firstinspires.ftc.teamcode.math.WaveLength;
 import org.firstinspires.ftc.teamcode.robot.Alliance;
 import org.firstinspires.ftc.teamcode.robot.Robot;
+import org.firstinspires.ftc.teamcode.util.Constants;
+import org.firstinspires.ftc.teamcode.util.HardwareNames;
 
 import static com.pedropathing.ivy.commands.Commands.infinite;
 
-@Config
 public class Shooter {
-    public static double kP = 0.01;
-    public static double kS = 0.065;
-    public static double kV = 0.000365;
-    public static int velocityTolerance = 25;
-    public static boolean override = false;
-    public static double overrideTarget = 1000;
     private final DcMotorEx flywheelMotorTop;
     private final DcMotorEx flywheelMotorBottom;
+    private final Servo adjustableHood;
     private final Telemetry telemetry;
     private final Drivetrain drivetrain;
     private boolean tempOverride = false;
+    private boolean hoodOverride = false;
     private boolean on = false;
     private double target = 0;
+    private double hoodTarget = Constants.adjHoodMin;
 
     public Shooter(Robot robot) {
-        flywheelMotorTop = robot.hardwareMap.get(DcMotorEx.class, "flywheelTop");
-        flywheelMotorBottom = robot.hardwareMap.get(DcMotorEx.class, "flywheelBottom");
+        flywheelMotorTop = robot.hardwareMap.get(DcMotorEx.class, HardwareNames.flywheelTop);
+        flywheelMotorBottom = robot.hardwareMap.get(DcMotorEx.class, HardwareNames.flywheelBottom);
+        adjustableHood = robot.hardwareMap.get(Servo.class, HardwareNames.adjustableHood);
         flywheelMotorBottom.setDirection(DcMotorSimple.Direction.REVERSE);
 
         telemetry = robot.telemetry;
@@ -39,12 +38,18 @@ public class Shooter {
     }
 
     public void setTarget(double target) {
-        this.target = target;
+        this.target = Math.abs(target);
         tempOverride = true;
     }
 
     public void useInterpolation() {
         tempOverride = false;
+        hoodOverride = false;
+    }
+
+    public void setHoodPosition(double hoodPosition) {
+        hoodTarget = Range.clip(hoodPosition, Constants.adjHoodMax, Constants.adjHoodMin);
+        hoodOverride = true;
     }
 
     private void setPower(double power) {
@@ -91,11 +96,17 @@ public class Shooter {
     }
 
     private double getVelocity() {
-        return flywheelMotorBottom.getVelocity();
+        return Math.abs(flywheelMotorBottom.getVelocity());
     }
 
     public boolean atTarget() {
-        return Math.abs(target - getVelocity()) <= velocityTolerance;
+        boolean velocityReady = Math.abs(target - getVelocity()) <= Constants.shooterVelocityTolerance;
+        boolean hoodReady = Math.abs(adjustableHood.getPosition() - hoodTarget) <= Constants.shooterHoodTolerance;
+        return on && target != 0 && velocityReady && hoodReady;
+    }
+
+    public boolean isOn() {
+        return on;
     }
 
     public void turnOn() {
@@ -114,17 +125,35 @@ public class Shooter {
 
     public Command periodic() {
         return infinite(() -> {
+            com.pedropathing.geometry.Pose turretPose = TurretLocation.getTurretPose(drivetrain.getPose());
+            double goalDistance = WaveLength.getDistanceToGoal(turretPose, Alliance.current);
+
             if (on) {
-                target = override ? overrideTarget : (tempOverride ? target : WaveLength.getVelocityWithInterpolation(TurretLocation.getTurretPose(drivetrain.getPose()), Alliance.current));
-                setPower(kP * (target - getVelocity()) + kV * target + kS * Math.signum(target));
+                target = Constants.shooterOverride ? Math.abs(Constants.shooterOverrideTarget) : (tempOverride ? target : WaveLength.getVelocityWithInterpolation(turretPose, Alliance.current));
+                hoodTarget = hoodOverride ? hoodTarget : WaveLength.getHoodWithInterpolation(turretPose, Alliance.current);
+                setPower(flywheelPIDF(
+                        target,
+                        getVelocity(),
+                        Constants.shooterKp,
+                        Constants.shooterKi,
+                        Constants.shooterKd,
+                        Constants.shooterKv,
+                        Constants.shooterKs
+                ));
             } else {
                 target = 0;
+                hoodTarget = Constants.adjHoodMin;
                 setPower(0);
             }
 
+            adjustableHood.setPosition(Range.clip(hoodTarget, Constants.adjHoodMax, Constants.adjHoodMin));
+
+            telemetry.addData("Shooter Distance", goalDistance);
             telemetry.addData("Flywheel Velocity", getVelocity());
             telemetry.addData("Flywheel Target", target);
             telemetry.addData("Flywheel Power", flywheelMotorBottom.getPower());
+            telemetry.addData("Hood Target", hoodTarget);
+            telemetry.addData("Hood Position", adjustableHood.getPosition());
         });
     }
 }

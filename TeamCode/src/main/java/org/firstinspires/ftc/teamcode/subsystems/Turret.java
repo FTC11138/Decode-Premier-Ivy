@@ -1,6 +1,5 @@
 package org.firstinspires.ftc.teamcode.subsystems;
 
-import com.acmerobotics.dashboard.config.Config;
 import com.pedropathing.ivy.Command;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
@@ -8,20 +7,13 @@ import com.qualcomm.robotcore.hardware.Servo;
 import com.qualcomm.robotcore.util.Range;
 import org.firstinspires.ftc.robotcore.external.Telemetry;
 import org.firstinspires.ftc.teamcode.robot.Robot;
+import org.firstinspires.ftc.teamcode.util.Constants;
+import org.firstinspires.ftc.teamcode.util.HardwareNames;
 
 import static com.pedropathing.ivy.commands.Commands.infinite;
 
-@Config
 public class Turret {
-    private static final double TICKS_PER_REVOLUTION = 384.5 * 3;
     private static double angleTransfer = 0;
-    public static double incrementDegrees = 2.5;
-    public static double homedAngleDegrees = 145;
-    public static double minAngleDegrees = -90;
-    public static double maxAngleDegrees = 270;
-    public static double minServoPosition = 0.0;
-    public static double maxServoPosition = 1.0;
-    public static double disabledServoPosition = 0.0;
     private final Servo turretServo;
     private final DcMotorEx turretEncoder;
     private final Telemetry telemetry;
@@ -31,8 +23,8 @@ public class Turret {
     private double angleOffsetDegrees = 0;
 
     public Turret(Robot robot) {
-        turretServo = robot.hardwareMap.get(Servo.class, "turret");
-        turretEncoder = robot.hardwareMap.get(DcMotorEx.class, "turretEncoder");
+        turretServo = robot.hardwareMap.get(Servo.class, HardwareNames.turretServo);
+        turretEncoder = robot.hardwareMap.get(DcMotorEx.class, HardwareNames.turretEncoder);
         telemetry = robot.telemetry;
 
         turretEncoder.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
@@ -40,7 +32,7 @@ public class Turret {
     }
 
     private double getRawAngleDegrees() {
-        return turretEncoder.getCurrentPosition() / TICKS_PER_REVOLUTION * 360;
+        return turretEncoder.getCurrentPosition() / Constants.turretTicksPerRevolution * 360;
     }
 
     private double getAngleDegrees() {
@@ -67,20 +59,20 @@ public class Turret {
     public void setTargetDegrees(double targetDegrees) {
         if (mode == Mode.HOME) return;
         mode = Mode.POSITION;
-        this.targetDegrees = Range.clip(targetDegrees, minAngleDegrees, maxAngleDegrees);
+        this.targetDegrees = Range.clip(targetDegrees, Constants.turretMinAngleDegrees, Constants.turretMaxAngleDegrees);
     }
 
     public void home() {
-        setAngleDegrees(homedAngleDegrees);
-        setTargetDegrees(homedAngleDegrees);
+        setAngleDegrees(Constants.turretHomedAngleDegrees);
+        setTargetDegrees(Constants.turretHomedAngleDegrees);
     }
 
     public void moveLeft() {
-        setTargetDegrees(targetDegrees - incrementDegrees);
+        setTargetDegrees(targetDegrees - Constants.turretIncrementDegrees);
     }
 
     public void moveRight() {
-        setTargetDegrees(targetDegrees + incrementDegrees);
+        setTargetDegrees(targetDegrees + Constants.turretIncrementDegrees);
     }
 
     public void setStartingAngle(double angle) {
@@ -92,18 +84,18 @@ public class Turret {
     }
 
     private double angleToServoPosition(double angleDegrees) {
-        double clippedAngle = Range.clip(angleDegrees, minAngleDegrees, maxAngleDegrees);
-        double angleRange = maxAngleDegrees - minAngleDegrees;
-        if (angleRange == 0) return minServoPosition;
+        double clippedAngle = Range.clip(angleDegrees, Constants.turretMinAngleDegrees, Constants.turretMaxAngleDegrees);
+        double angleRange = Constants.turretMaxAngleDegrees - Constants.turretMinAngleDegrees;
+        if (angleRange == 0) return Constants.turretMinServoPosition;
 
-        double percent = (clippedAngle - minAngleDegrees) / angleRange;
-        double position = minServoPosition + percent * (maxServoPosition - minServoPosition);
+        double percent = (clippedAngle - Constants.turretMinAngleDegrees) / angleRange;
+        double position = Constants.turretMinServoPosition + percent * (Constants.turretMaxServoPosition - Constants.turretMinServoPosition);
         return Range.clip(position, 0.0, 1.0);
     }
 
     public Command periodic() {
         return infinite(() -> {
-            if (forceOff) turretServo.setPosition(disabledServoPosition);
+            if (forceOff) turretServo.setPosition(Constants.turretDisabledServoPosition);
             else {
                 switch (mode) {
                     case POSITION:
@@ -112,8 +104,8 @@ public class Turret {
                     case OFF:
                         break;
                     case HOME:
-                        setAngleDegrees(homedAngleDegrees);
-                        setTargetDegrees(homedAngleDegrees);
+                        setAngleDegrees(Constants.turretHomedAngleDegrees);
+                        setTargetDegrees(Constants.turretHomedAngleDegrees);
                         break;
                 }
             }

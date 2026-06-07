@@ -1,84 +1,74 @@
 package org.firstinspires.ftc.teamcode.math;
 
-import com.pedropathing.follower.Follower;
 import com.pedropathing.ftc.FTCCoordinates;
 import com.pedropathing.geometry.PedroCoordinates;
 import com.pedropathing.geometry.Pose;
 import com.qualcomm.hardware.limelightvision.LLResult;
 import com.qualcomm.hardware.limelightvision.Limelight3A;
-import com.qualcomm.robotcore.eventloop.opmode.OpMode;
-import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
+import com.qualcomm.robotcore.hardware.HardwareMap;
 
 import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
 import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
 import org.firstinspires.ftc.robotcore.external.navigation.Pose3D;
 import org.firstinspires.ftc.robotcore.external.navigation.Position;
-import org.firstinspires.ftc.teamcode.pedroPathing.Constants;
+import org.firstinspires.ftc.teamcode.subsystems.Drivetrain;
+import org.firstinspires.ftc.teamcode.util.HardwareNames;
 
-@TeleOp(name = "LL Pose Resetter", group = "Utility")
-public class LLPoseResetter extends OpMode {
-    private Limelight3A camera;
-    private Follower follower;
-    private boolean crossWasDown = false;
-    private String resetStatus = "Press gamepad1 cross to reset pose";
+public class LLPoseResetter {
+    private final Limelight3A camera;
+    private String status = "Waiting for reset";
 
-    @Override
-    public void init() {
-        camera = hardwareMap.get(Limelight3A.class, "limelight");
-        follower = Constants.createFollower(hardwareMap);
-        follower.setStartingPose(new Pose());
+    public LLPoseResetter(HardwareMap hardwareMap) {
+        camera = hardwareMap.get(Limelight3A.class, HardwareNames.limelight);
     }
 
-    @Override
     public void start() {
         camera.start();
     }
 
-    @Override
-    public void loop() {
-        follower.update();
-
-        Pose pose = follower.getPose();
-        telemetry.addData("Pose X", pose.getX());
-        telemetry.addData("Pose Y", pose.getY());
-        telemetry.addData("Pose Heading", Math.toDegrees(pose.getHeading()));
-        telemetry.addData("LL Reset", resetStatus);
-        telemetry.update();
-    }
-
-    @Override
     public void stop() {
         camera.stop();
     }
 
-    private void resetPoseFromLimelight() {
-        LLResult result = camera.getLatestResult();
-        if (result == null) {
-            resetStatus = "No Limelight result";
-            return;
-        }
+    public boolean resetPose(Drivetrain drivetrain) {
+        Pose cameraPose = getRobotPoseFromCamera();
+        if (cameraPose == null) return false;
 
-        if (!result.isValid()) {
-            resetStatus = "Limelight result invalid";
-            return;
-        }
-
-        if (result.getBotposeTagCount() <= 0) {
-            resetStatus = "No AprilTags in botpose";
-            return;
-        }
-
-        Pose cameraPose = getRobotPoseFromCamera(result.getBotpose());
-        follower.setPose(cameraPose);
-        resetStatus = String.format(
+        drivetrain.setPose(cameraPose);
+        status = String.format(
                 "Reset to x=%.1f y=%.1f h=%.1f",
                 cameraPose.getX(),
                 cameraPose.getY(),
                 Math.toDegrees(cameraPose.getHeading())
         );
+        return true;
     }
 
-    private Pose getRobotPoseFromCamera(Pose3D botpose) {
+    public String getStatus() {
+        return status;
+    }
+
+    private Pose getRobotPoseFromCamera() {
+        LLResult result = camera.getLatestResult();
+        if (result == null) {
+            status = "No Limelight result";
+            return null;
+        }
+
+        if (!result.isValid()) {
+            status = "Limelight result invalid";
+            return null;
+        }
+
+        if (result.getBotposeTagCount() <= 0) {
+            status = "No AprilTags in botpose";
+            return null;
+        }
+
+        return convertToPedroPose(result.getBotpose());
+    }
+
+    private Pose convertToPedroPose(Pose3D botpose) {
         Position position = botpose.getPosition().toUnit(DistanceUnit.INCH);
         double headingRadians = botpose.getOrientation().getYaw(AngleUnit.RADIANS);
 

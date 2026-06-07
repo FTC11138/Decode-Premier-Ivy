@@ -1,16 +1,13 @@
 package org.firstinspires.ftc.teamcode.math;
 
-import com.acmerobotics.dashboard.config.Config;
 import com.pedropathing.geometry.Pose;
 import org.firstinspires.ftc.robotcore.external.Telemetry;
 import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
 import org.firstinspires.ftc.teamcode.robot.Alliance;
 import org.firstinspires.ftc.teamcode.robot.Robot;
+import org.firstinspires.ftc.teamcode.util.Constants;
 
-@Config
 public class TractorBeam {
-    public static double minimumAngleDegrees = -90;
-
     public static void aimTurret(Pose currentPose, Robot robot, Alliance alliance) {
         double turretTargetDegrees = getTurretTargetDegrees(currentPose, robot.telemetry, alliance);
 
@@ -28,7 +25,7 @@ public class TractorBeam {
         double fieldTargetDegrees = Math.toDegrees(fieldTargetRadians);
         double turretTargetDegrees = AngleUnit.normalizeDegrees(fieldTargetDegrees - Math.toDegrees(turretPose.getHeading()));
 
-        if (turretTargetDegrees < minimumAngleDegrees) {
+        if (turretTargetDegrees < Constants.turretMinimumAutoAimAngleDegrees) {
             turretTargetDegrees += 360;
         }
 

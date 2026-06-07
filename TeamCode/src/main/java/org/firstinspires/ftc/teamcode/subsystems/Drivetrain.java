@@ -1,5 +1,4 @@
 package org.firstinspires.ftc.teamcode.subsystems;
-import com.acmerobotics.dashboard.config.Config;
 import com.pedropathing.control.PIDFCoefficients;
 import com.pedropathing.control.PIDFController;
 import com.pedropathing.follower.Follower;
@@ -10,36 +9,41 @@ import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
 import org.firstinspires.ftc.robotcore.external.Telemetry;
 import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
-import org.firstinspires.ftc.teamcode.pedroPathing.Constants;
 import org.firstinspires.ftc.teamcode.robot.Alliance;
 import org.firstinspires.ftc.teamcode.robot.Robot;
+import org.firstinspires.ftc.teamcode.util.Constants;
+import org.firstinspires.ftc.teamcode.util.HardwareNames;
 
 import static com.pedropathing.ivy.commands.Commands.infinite;
 import static com.pedropathing.ivy.pedro.PedroCommands.follow;
+import static org.firstinspires.ftc.teamcode.pedroPathing.Constants.createFollower;
 
-@Config
 public class Drivetrain {
-    public static PIDFCoefficients headingCoefficients = new PIDFCoefficients(1.75, 0, 0.09, 0);
-    public static double gateOpenHeadingDegrees = 36.5;
     private static Pose poseTransfer = new Pose();
+    private static boolean poseTransferReady = false;
     public final DcMotorEx frontLeft;
     public final DcMotorEx frontRight;
     public final DcMotorEx backLeft;
     public final DcMotorEx backRight;
     public final Follower follower;
     private final Telemetry telemetry;
-    private final PIDFController headingController = new PIDFController(headingCoefficients);
+    private final PIDFController headingController = new PIDFController(error -> new PIDFCoefficients(
+            Constants.driveHeadingKp,
+            Constants.driveHeadingKi,
+            Constants.driveHeadingKd,
+            Constants.driveHeadingKf
+    ));
     private boolean lockHeading = false;
     private boolean fieldCentricEnabled = true;
     private double headingTargetRadians = 0;
     private double fieldCentricHeadingOffsetRadians = 0;
 
     public Drivetrain(Robot robot) {
-        follower = Constants.createFollower(robot.hardwareMap);
-        frontLeft = robot.hardwareMap.get(DcMotorEx.class, "frontLeft");
-        frontRight = robot.hardwareMap.get(DcMotorEx.class, "frontRight");
-        backLeft = robot.hardwareMap.get(DcMotorEx.class, "backLeft");
-        backRight = robot.hardwareMap.get(DcMotorEx.class, "backRight");
+        follower = createFollower(robot.hardwareMap);
+        frontLeft = robot.hardwareMap.get(DcMotorEx.class, HardwareNames.frontLeft);
+        frontRight = robot.hardwareMap.get(DcMotorEx.class, HardwareNames.frontRight);
+        backLeft = robot.hardwareMap.get(DcMotorEx.class, HardwareNames.backLeft);
+        backRight = robot.hardwareMap.get(DcMotorEx.class, HardwareNames.backRight);
 
         frontLeft.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
         frontRight.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
@@ -55,14 +59,15 @@ public class Drivetrain {
 
     public static void localize(Pose pose) {
         poseTransfer = pose;
+        poseTransferReady = true;
     }
 
     public void gateHeading(Alliance alliance) {
         lockHeading = true;
         if (alliance == Alliance.RED) {
-            headingTargetRadians = Math.toRadians(gateOpenHeadingDegrees);
+            headingTargetRadians = Math.toRadians(Constants.gateOpenHeadingDegrees);
         } else {
-            headingTargetRadians = Math.toRadians(180 - gateOpenHeadingDegrees);
+            headingTargetRadians = Math.toRadians(180 - Constants.gateOpenHeadingDegrees);
         }
     }
 
@@ -116,7 +121,7 @@ public class Drivetrain {
 
         double x = strafe * Math.cos(-driveHeadingRadians) - forward * Math.sin(-driveHeadingRadians);
         double y = strafe * Math.sin(-driveHeadingRadians) + forward * Math.cos(-driveHeadingRadians);
-        y *= 1.1;
+        y *= Constants.driveFieldCentricYMultiplier;
 
         double denominator = Math.max(Math.abs(x) + Math.abs(y) + Math.abs(turn), 1);
 
@@ -139,7 +144,15 @@ public class Drivetrain {
     }
 
     public void usePreviousStartingPose() {
-        setStartingPose(poseTransfer);
+        if (poseTransferReady) {
+            setStartingPose(poseTransfer);
+        } else {
+            setStartingPose(new Pose(
+                    Constants.teleOpStartX,
+                    Constants.teleOpStartY,
+                    Math.toRadians(Constants.teleOpStartHeadingDegrees)
+            ));
+        }
     }
 
     public Command followPath(PathChain path) {
@@ -150,6 +163,7 @@ public class Drivetrain {
         return infinite(() -> {
             follower.update();
             poseTransfer = follower.getPose();
+            poseTransferReady = true;
 
             telemetry.addData("Current X", follower.getPose().getX());
             telemetry.addData("Current Y", follower.getPose().getY());
