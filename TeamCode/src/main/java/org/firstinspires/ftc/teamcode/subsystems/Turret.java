@@ -1,9 +1,9 @@
 package org.firstinspires.ftc.teamcode.subsystems;
 
 import com.pedropathing.ivy.Command;
+import com.qualcomm.robotcore.hardware.CRServo;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
-import com.qualcomm.robotcore.hardware.Servo;
 import com.qualcomm.robotcore.util.Range;
 import org.firstinspires.ftc.robotcore.external.Telemetry;
 import org.firstinspires.ftc.teamcode.robot.Robot;
@@ -14,16 +14,20 @@ import static com.pedropathing.ivy.commands.Commands.infinite;
 
 public class Turret {
     private static double angleTransfer = 0;
-    private final Servo turretServo;
+    private final CRServo turretServo;
     private final DcMotorEx turretEncoder;
     private final Telemetry telemetry;
     public boolean forceOff = false;
     private double targetDegrees = 0;
     private Mode mode = Mode.OFF;
     private double angleOffsetDegrees = 0;
+    private double integral = 0;
+    private double lastError = 0;
+    private long lastTime = System.nanoTime();
+    private double lastPower = 0;
 
     public Turret(Robot robot) {
-        turretServo = robot.hardwareMap.get(Servo.class, HardwareNames.turretServo);
+        turretServo = robot.hardwareMap.get(CRServo.class, HardwareNames.turretServo);
         turretEncoder = robot.hardwareMap.get(DcMotorEx.class, HardwareNames.turretEncoder);
         telemetry = robot.telemetry;
 
@@ -51,6 +55,7 @@ public class Turret {
     public void off() {
         if (mode == Mode.HOME) return;
         mode = Mode.OFF;
+        resetController();
     }
 
     public double getTargetDegrees() {
@@ -67,6 +72,7 @@ public class Turret {
         setAngleDegrees(Constants.turretHomedAngleDegrees);
         targetDegrees = Range.clip(Constants.turretHomedAngleDegrees, Constants.turretMinAngleDegrees, Constants.turretMaxAngleDegrees);
         mode = Mode.POSITION;
+        resetController();
     }
 
     public void moveLeft() {
@@ -85,25 +91,59 @@ public class Turret {
         setAngleDegrees(angleTransfer);
     }
 
-    private double angleToServoPosition(double angleDegrees) {
-        double clippedAngle = Range.clip(angleDegrees, Constants.turretMinAngleDegrees, Constants.turretMaxAngleDegrees);
-        double angleRange = Constants.turretMaxAngleDegrees - Constants.turretMinAngleDegrees;
-        if (angleRange == 0) return Constants.turretMinServoPosition;
+    private void resetController() {
+        integral = 0;
+        lastError = 0;
+        lastTime = System.nanoTime();
+        lastPower = 0;
+    }
 
-        double percent = (clippedAngle - Constants.turretMinAngleDegrees) / angleRange;
-        double position = Constants.turretMinServoPosition + percent * (Constants.turretMaxServoPosition - Constants.turretMinServoPosition);
-        return Range.clip(position, 0.0, 1.0);
+    private void setTurretPower(double power) {
+        double direction = Constants.turretServoReversed ? -1.0 : 1.0;
+        lastPower = Range.clip(direction * power, -Constants.maxPower, Constants.maxPower);
+        turretServo.setPower(lastPower);
+    }
+
+    private double calculatePower() {
+        long now = System.nanoTime();
+        double dt = (now - lastTime) / 1e9;
+        if (dt <= 0 || dt > 0.25) dt = 0.02;
+
+        double error = targetDegrees - getAngleDegrees();
+        if (Math.abs(error) <= Constants.deadbandDeg) {
+            resetController();
+            return 0;
+        }
+
+        integral += error * dt;
+        integral = Range.clip(integral, -Constants.maxIntegral, Constants.maxIntegral);
+
+        double derivative = Range.clip((error - lastError) / dt, -Constants.maxDeriv, Constants.maxDeriv);
+        double power = Constants.kP_v * error + Constants.kI_v * integral + Constants.kD_v * derivative;
+
+        if (Constants.kS != 0) {
+            power += Math.signum(power) * Constants.kS;
+        }
+
+        lastError = error;
+        lastTime = now;
+        return Range.clip(power, -Constants.maxPower, Constants.maxPower);
     }
 
     public Command periodic() {
         return infinite(() -> {
-            if (forceOff) turretServo.setPosition(Constants.turretDisabledServoPosition);
+            if (forceOff) {
+                setTurretPower(0);
+                resetController();
+            }
             else {
                 switch (mode) {
                     case POSITION:
-                        turretServo.setPosition(angleToServoPosition(targetDegrees));
+                        setTurretPower(calculatePower());
                         break;
                     case OFF:
+                        setTurretPower(0);
+                        resetController();
                         break;
                     case HOME:
                         setAngleDegrees(Constants.turretHomedAngleDegrees);
@@ -116,8 +156,8 @@ public class Turret {
 
             telemetry.addData("Turret Angle", getAngleDegrees());
             telemetry.addData("Turret Target", targetDegrees);
-            telemetry.addData("Turret Servo Position", turretServo.getPosition());
-            telemetry.addData("Turret Target Servo Position", angleToServoPosition(targetDegrees));
+            telemetry.addData("Turret Error", targetDegrees - getAngleDegrees());
+            telemetry.addData("Turret CR Power", lastPower);
             telemetry.addData("Turret Mode", mode);
             telemetry.addData("Turret Encoder Ticks", turretEncoder.getCurrentPosition());
             telemetry.addData("Turret Forced Off", forceOff ? "Yes" : "No");
