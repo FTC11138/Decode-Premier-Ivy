@@ -66,8 +66,8 @@ public class Constants {
     public static boolean shooterOverride = false;
     public static double shooterOverrideTarget = 1000;
     public static double shooterPowerSign = -1.0;
-    public static boolean shooterTopReversed = true;
-    public static boolean shooterBottomReversed = true;
+    public static boolean shooterTopReversed = false;
+    public static boolean shooterBottomReversed = false;
     public static boolean shooterTopEnabled = true;
     public static boolean shooterBottomEnabled = true;
 
@@ -113,24 +113,25 @@ public class Constants {
     /* -------------------------------------------- TURRET CONSTANTS -------------------------------------------- */
     public static double turretTicksPerRevolution = 384.5 * 3.0;
     public static double turretIncrementDegrees = 2.5;
-    public static double turretHomedAngleDegrees = 145;
-    public static double turretMinAngleDegrees = -90;
-    public static double turretMaxAngleDegrees = 270;
+    public static double turretHomedAngleDegrees = 0;
+    public static double turretMinAngleDegrees = 0;
+    public static double turretMaxAngleDegrees = 180;
     public static double turretMinServoPosition = 0.0;
     public static double turretMaxServoPosition = 1.0;
     public static double turretDisabledServoPosition = 0.0;
     public static double turretForwardOffsetInches = 0;
     public static double turretLeftOffsetInches = -2.19;
-    public static double turretMinimumAutoAimAngleDegrees = -90;
+    public static double turretMinimumAutoAimAngleDegrees = 0;
     public static boolean turretEncoderReversed = false;
+    public static boolean turretServoReversed = false;
 
-    public static double deadbandDeg = 0;
+    public static double deadbandDeg = 1.0;
     public static double errAlpha = 0.35;
     public static double CENTER_KP = 0.008;
     public static double CENTER_KD = 0.0001;
     public static double maxIntegral = 30.0;
     public static double maxDeriv = 320.0;
-    public static double maxPower = 1.0;
+    public static double maxPower = 0.6;
     public static double kS = 0.0;
     public static double kP_v = 0.015;
     public static double kI_v = 0;

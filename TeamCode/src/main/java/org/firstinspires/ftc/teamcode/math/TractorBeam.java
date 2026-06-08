@@ -6,6 +6,7 @@ import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
 import org.firstinspires.ftc.teamcode.robot.Alliance;
 import org.firstinspires.ftc.teamcode.robot.Robot;
 import org.firstinspires.ftc.teamcode.util.Constants;
+import com.qualcomm.robotcore.util.Range;
 
 public class TractorBeam {
     public static void aimTurret(Pose currentPose, Robot robot, Alliance alliance) {
@@ -25,9 +26,11 @@ public class TractorBeam {
         double fieldTargetDegrees = Math.toDegrees(fieldTargetRadians);
         double turretTargetDegrees = AngleUnit.normalizeDegrees(fieldTargetDegrees - Math.toDegrees(turretPose.getHeading()));
 
-        if (turretTargetDegrees < Constants.turretMinimumAutoAimAngleDegrees) {
-            turretTargetDegrees += 360;
-        }
+        turretTargetDegrees = Range.clip(
+                turretTargetDegrees,
+                Constants.turretMinAngleDegrees,
+                Constants.turretMaxAngleDegrees
+        );
 
         telemetry.addData("Auto Aim Field Target", fieldTargetDegrees);
         telemetry.addData("Auto Aim Turret Target", turretTargetDegrees);
