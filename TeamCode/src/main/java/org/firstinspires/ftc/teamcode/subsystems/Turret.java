@@ -18,6 +18,7 @@ public class Turret {
     private final DcMotorEx turretEncoder;
     private final Telemetry telemetry;
     public boolean forceOff = false;
+    public boolean autoAimEnabled = true;
     private double targetDegrees = 0;
     private Mode mode = Mode.OFF;
     private double angleOffsetDegrees = 0;
@@ -76,11 +77,21 @@ public class Turret {
     }
 
     public void moveLeft() {
+        autoAimEnabled = false;
         setTargetDegrees(targetDegrees - Constants.turretIncrementDegrees);
     }
 
     public void moveRight() {
+        autoAimEnabled = false;
         setTargetDegrees(targetDegrees + Constants.turretIncrementDegrees);
+    }
+
+    public void enableAutoAim() {
+        autoAimEnabled = true;
+    }
+
+    public void disableAutoAim() {
+        autoAimEnabled = false;
     }
 
     public void setStartingAngle(double angle) {
@@ -99,6 +110,13 @@ public class Turret {
     }
 
     private void setTurretPower(double power) {
+        double angle = getAngleDegrees();
+        if (angle <= Constants.turretMinAngleDegrees && power < 0) {
+            power = 0;
+        } else if (angle >= Constants.turretMaxAngleDegrees && power > 0) {
+            power = 0;
+        }
+
         double direction = Constants.turretServoReversed ? -1.0 : 1.0;
         lastPower = Range.clip(direction * power, -Constants.maxPower, Constants.maxPower);
         turretServo.setPower(lastPower);
@@ -159,6 +177,7 @@ public class Turret {
             telemetry.addData("Turret Error", targetDegrees - getAngleDegrees());
             telemetry.addData("Turret CR Power", lastPower);
             telemetry.addData("Turret Mode", mode);
+            telemetry.addData("Turret Auto Aim", autoAimEnabled);
             telemetry.addData("Turret Encoder Ticks", turretEncoder.getCurrentPosition());
             telemetry.addData("Turret Forced Off", forceOff ? "Yes" : "No");
         });

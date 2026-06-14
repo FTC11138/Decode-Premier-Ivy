@@ -36,6 +36,8 @@ public class Spindexer {
     private boolean ignoreSensor = false;
     private long sensorWait = Constants.sensorWait;
     private long lastDetectTime = 0;
+    private boolean autoLoadPending = false;
+    private long autoLoadTime = 0;
     private int ballCount = 0;
 
     private boolean intaking = true;
@@ -124,6 +126,7 @@ public class Spindexer {
         return instant(() -> {
             this.intaking = intaking;
             this.shooting = false;
+            if (!intaking) autoLoadPending = false;
         });
     }
 
@@ -170,6 +173,7 @@ public class Spindexer {
     }
 
     private void autoLoadBall() {
+        autoLoadPending = false;
         ballCount++;
         if (ballCount < 3) {
             moveRelative(ticks120Degrees(), Constants.spindexerMovePower);
@@ -180,6 +184,8 @@ public class Spindexer {
 
     public Command periodic() {
         return infinite(() -> {
+            long now = timer.time(TimeUnit.MILLISECONDS);
+
             spindexerMotor.setTargetPosition(getTargetPosition());
             spindexerMotor.setMode(DcMotor.RunMode.RUN_TO_POSITION);
             spindexerMotor.setPower(isMoving() ? activePower : Constants.spindexerHoldPower);
@@ -189,11 +195,15 @@ public class Spindexer {
 
             if (ballDetected && !lastBallDetected && Constants.autoSpindex && intaking && !ignoreSensor) {
                 ignoreSensor(Constants.sensorWait);
+                autoLoadPending = true;
+                autoLoadTime = now + Constants.spindexerAutoLoadDelayMs;
+            }
+
+            if (autoLoadPending && now >= autoLoadTime) {
                 autoLoadBall();
             }
 
             double current = getCurrent();
-            long now = timer.time(TimeUnit.MILLISECONDS);
             if (current >= Constants.stuckCurrent && !ignoreUnstuck) {
                 currentStuck = true;
                 ignoreUnstuck = true;
@@ -220,6 +230,7 @@ public class Spindexer {
             telemetry.addData("Spindexer Ranger Can Rotate", canRotate);
             telemetry.addData("Spindexer Ball Count", ballCount);
             telemetry.addData("Spindexer Ignore Sensor", ignoreSensor);
+            telemetry.addData("Spindexer Auto Load Pending", autoLoadPending);
             telemetry.addData("Spindexer Intaking", intaking);
             telemetry.addData("Spindexer Shooting", shooting);
         });

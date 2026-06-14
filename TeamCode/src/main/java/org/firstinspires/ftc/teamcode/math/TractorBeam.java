@@ -17,7 +17,7 @@ public class TractorBeam {
 
     public static double getTurretTargetDegrees(Pose currentPose, Telemetry telemetry, Alliance alliance) {
         Pose turretPose = TurretLocation.getTurretPose(currentPose);
-        Pose goal = alliance.goal;
+        Pose goal = alliance.getGoal();
 
         double fieldTargetRadians = Math.atan2(
                 goal.getY() - turretPose.getY(),
