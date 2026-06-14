@@ -72,7 +72,7 @@ public class WaveLength {
     }
 
     public static double getDistanceToGoal(Pose currentPosition, Alliance alliance) {
-        Pose goal = alliance.goal;
+        Pose goal = alliance.getGoal();
         return Math.hypot(goal.getX() - currentPosition.getX(), goal.getY() - currentPosition.getY());
     }
 

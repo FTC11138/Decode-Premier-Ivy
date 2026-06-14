@@ -1,17 +1,18 @@
 package org.firstinspires.ftc.teamcode.robot;
 
 import com.pedropathing.geometry.Pose;
-
-import static org.firstinspires.ftc.teamcode.math.PoseMirror.mirror;
+import org.firstinspires.ftc.teamcode.util.Constants;
 
 public enum Alliance {
-    RED(new Pose(138, 138)),
-    BLUE(mirror(new Pose(138, 138)));
+    RED,
+    BLUE;
 
-    public static Alliance current = Alliance.RED;
-    public final Pose goal;
+    public static Alliance current = Alliance.BLUE;
 
-    Alliance(Pose goal) {
-        this.goal = goal;
+    public Pose getGoal() {
+        if (this == RED) {
+            return new Pose(Constants.redGoalX, Constants.redGoalY);
+        }
+        return new Pose(Constants.blueGoalX, Constants.blueGoalY);
     }
 }

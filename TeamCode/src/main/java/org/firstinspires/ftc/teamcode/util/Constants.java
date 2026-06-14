@@ -27,6 +27,10 @@ public class Constants {
     public static double teleOpStartX = 72;
     public static double teleOpStartY = 72;
     public static double teleOpStartHeadingDegrees = 0;
+    public static double redGoalX = 138;
+    public static double redGoalY = 138;
+    public static double blueGoalX = 3.5;
+    public static double blueGoalY = 138;
 
     /* -------------------------------------------- CAMERA CONSTANTS -------------------------------------------- */
     //Pipeline: 0
@@ -85,12 +89,12 @@ public class Constants {
     public static double adjHoodMax = 0.02;
     public static double adjHoodMin = 0.48;
     public static double shootVelFar = -1850;
-    public static double shootVelClose = -1450;
-    public static double shootVelTol = 25;
+//    public static double shootVelClose = -1450;
+//    public static double shootVelTol = 25;
     public static double shootHoodFar = 0.38;
-    public static double shootHoodClose = 0.38;
-    public static double autoHood = 0.4;
-    public static double autoVel = -1520;
+//    public static double shootHoodClose = 0.38;
+//    public static double autoHood = 0.4;
+//    public static double autoVel = -1520;
 
     public static double shooterHoodTolerance = 0.015;
 
@@ -100,35 +104,38 @@ public class Constants {
     public static double spindexerShootPower = 0.7;
     public static double spindexerHoldPower = 0.25;
     public static boolean autoSpindex = true;
-    public static long sensorWait = 250;
+    public static long sensorWait = 325;
+    public static long spindexerAutoLoadDelayMs = 100;
     public static long shootSensorWait = 500;
     public static long shootSingleSensorWait = 350;
     public static double stuckCurrent = 8.0;
     public static long spindexerUnstuckWaitMs = 750;
-    public static double spindexer_kP = 0.005;
-    public static double spindexer_kI = 0.000001;
-    public static double spindexer_kD = 0.0001;
-    public static double spindexerRotatePower = 0.5;
+//    public static double spindexer_kP = 0.005;
+//    public static double spindexer_kI = 0.000001;
+//    public static double spindexer_kD = 0.0001;
+//    public static double spindexerRotatePower = 0.5;
 
     /* -------------------------------------------- TURRET CONSTANTS -------------------------------------------- */
-    public static double turretTicksPerRevolution = 384.5 * 3.0;
+    public static double turretEncoderTicksPerRevolution = 8192.0;
+    public static double turretEncoderRevolutionsPerTurretRevolution = 102.0 / 45.0;
+    public static double turretTicksPerRevolution = turretEncoderTicksPerRevolution * turretEncoderRevolutionsPerTurretRevolution;
     public static double turretIncrementDegrees = 2.5;
     public static double turretHomedAngleDegrees = 0;
-    public static double turretMinAngleDegrees = 0;
-    public static double turretMaxAngleDegrees = 180;
-    public static double turretMinServoPosition = 0.0;
-    public static double turretMaxServoPosition = 1.0;
-    public static double turretDisabledServoPosition = 0.0;
+    public static double turretMinAngleDegrees = -90;
+    public static double turretMaxAngleDegrees = 90;
+//    public static double turretMinServoPosition = 0.0;
+//    public static double turretMaxServoPosition = 1.0;
+//    public static double turretDisabledServoPosition = 0.0;
     public static double turretForwardOffsetInches = 0;
     public static double turretLeftOffsetInches = -2.19;
-    public static double turretMinimumAutoAimAngleDegrees = 0;
-    public static boolean turretEncoderReversed = false;
-    public static boolean turretServoReversed = false;
+//    public static double turretMinimumAutoAimAngleDegrees = -90;
+    public static boolean turretEncoderReversed = true;
+    public static boolean turretServoReversed = true;
 
     public static double deadbandDeg = 1.0;
     public static double errAlpha = 0.35;
-    public static double CENTER_KP = 0.008;
-    public static double CENTER_KD = 0.0001;
+//    public static double CENTER_KP = 0.008;
+//    public static double CENTER_KD = 0.0001;
     public static double maxIntegral = 30.0;
     public static double maxDeriv = 320.0;
     public static double maxPower = 0.6;
@@ -136,9 +143,9 @@ public class Constants {
     public static double kP_v = 0.015;
     public static double kI_v = 0;
     public static double kD_v = 0.001;
-    public static double kP_velo = 0.75;
-    public static double kI_velo = 0.0;
-    public static double kD_velo = 0.2;
-    public static double kF_velo = 14.0;
+//    public static double kP_velo = 0.75;
+//    public static double kI_velo = 0.0;
+//    public static double kD_velo = 0.2;
+//    public static double kF_velo = 14.0;
 
 }

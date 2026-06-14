@@ -74,6 +74,12 @@ public class TeleOp_Solo extends RobotOpMode {
         }
         gamepad1TouchpadWasDown = gamepad1.touchpad;
 
+        handleAllianceSelection();
+
+        if (robot.turret.autoAimEnabled) {
+            TractorBeam.aimTurret(robot.drivetrain.getPose(), robot, Alliance.current);
+        }
+
         if (teleOpEnabled) {
             runDriverControls();
         }
@@ -84,6 +90,8 @@ public class TeleOp_Solo extends RobotOpMode {
         robot.telemetry.addData("Turret X", turretPose.getX());
         robot.telemetry.addData("Turret Y", turretPose.getY());
         robot.telemetry.addData("Alliance", Alliance.current);
+        robot.telemetry.addData("Target X", Alliance.current.getGoal().getX());
+        robot.telemetry.addData("Target Y", Alliance.current.getGoal().getY());
         robot.telemetry.addData("LL Pose Reset", llPoseResetter.getStatus());
         robot.telemetry.addData("Spindexer Ball Count", robot.spindexer.getBallCount());
 
@@ -101,8 +109,6 @@ public class TeleOp_Solo extends RobotOpMode {
                 -gamepad1.right_stick_x * Constants.driveTurnMultiplier,
                 Alliance.current
         );
-
-        TractorBeam.aimTurret(robot.drivetrain.getPose(), robot, Alliance.current);
 
 //        if (robot.drivetrain.getPose().getY() > Constants.intakeSlowPowerYThreshold) {
 //            robot.intake.speedUp();
@@ -195,17 +201,11 @@ public class TeleOp_Solo extends RobotOpMode {
         gamepad1DpadRightWasDown = gamepad1.dpad_right;
 
         if (gamepad2.triangleWasPressed()) {
-            robot.turret.forceOff = !robot.turret.forceOff;
-        }
-
-        if (gamepad2.leftBumperWasPressed()) {
-            Alliance.current = Alliance.RED;
-            setAllianceLed();
-        }
-
-        if (gamepad2.rightBumperWasPressed()) {
-            Alliance.current = Alliance.BLUE;
-            setAllianceLed();
+            if (robot.turret.autoAimEnabled) {
+                robot.turret.disableAutoAim();
+            } else {
+                robot.turret.enableAutoAim();
+            }
         }
 
         if (gamepad2.crossWasPressed()) {
@@ -230,6 +230,18 @@ public class TeleOp_Solo extends RobotOpMode {
 
         if (robot.spindexer.getBallCount() == 3) {
             gamepad2.rumble(100);
+        }
+    }
+
+    private void handleAllianceSelection() {
+        if (gamepad2.leftBumperWasPressed()) {
+            Alliance.current = Alliance.RED;
+            setAllianceLed();
+        }
+
+        if (gamepad2.rightBumperWasPressed()) {
+            Alliance.current = Alliance.BLUE;
+            setAllianceLed();
         }
     }
 
