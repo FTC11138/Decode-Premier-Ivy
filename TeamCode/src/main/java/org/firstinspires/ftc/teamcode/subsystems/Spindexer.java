@@ -186,6 +186,18 @@ public class Spindexer {
         return infinite(() -> {
             long now = timer.time(TimeUnit.MILLISECONDS);
 
+            // Auto-clear the shooting flag when rotation completes. The flag is
+            // set by rotateShootCW() and was previously only cleared by
+            // setIntaking(), which lives in the shoot chain's .then(...) step.
+            // If the chain is interrupted before that step (e.g. driver presses
+            // dpad mid-rotation, or another command preempts the spindexer),
+            // shooting stays true forever and the autoLoadPending guard below
+            // would permanently drop every future auto-load. Tying the flag to
+            // physical motion makes it self-healing.
+            if (shooting && !isMoving()) {
+                shooting = false;
+            }
+
             spindexerMotor.setTargetPosition(getTargetPosition());
             spindexerMotor.setMode(DcMotor.RunMode.RUN_TO_POSITION);
             spindexerMotor.setPower(isMoving() ? activePower : Constants.spindexerHoldPower);
@@ -200,7 +212,16 @@ public class Spindexer {
             }
 
             if (autoLoadPending && now >= autoLoadTime) {
-                autoLoadBall();
+                // Re-check conditions at execution time. The trigger that set
+                // autoLoadPending fired ~100ms ago; in that window the user may
+                // have started a shoot (shooting=true) or stopped intaking, in
+                // which case firing autoLoadBall would override an in-flight
+                // rotation and pinch a ball mid-transition.
+                if (intaking && !shooting) {
+                    autoLoadBall();
+                } else {
+                    autoLoadPending = false;
+                }
             }
 
             double current = getCurrent();

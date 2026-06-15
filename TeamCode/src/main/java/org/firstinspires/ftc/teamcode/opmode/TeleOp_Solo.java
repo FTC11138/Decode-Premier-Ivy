@@ -150,8 +150,16 @@ public class TeleOp_Solo extends RobotOpMode {
             }
         }
         if (gamepad1.rightBumperWasPressed()) {
-            robot.spindexer.rotateShootCW()
-                    .then(waitUntil(() -> !robot.spindexer.isMoving()))
+            // right_bumper is the "expert bypass" shoot — it does NOT require
+            // atTarget() (driver may know the shot is fine even if velocity
+            // tolerance hasn't settled). But it must require the shooter to
+            // at least be ON, otherwise we shove a ball into a stationary
+            // flywheel and jam the gap between spindexer and shooter.
+            conditional(
+                    () -> robot.shooter.isOn(),
+                    robot.spindexer.rotateShootCW(),
+                    robot.spindexer.stop()
+            ).then(waitUntil(() -> !robot.spindexer.isMoving()))
                     .then(robot.intake.on(), robot.spindexer.setIntaking(true))
                     .schedule();
             intakeEnabled = true;
@@ -226,6 +234,17 @@ public class TeleOp_Solo extends RobotOpMode {
 
         if (gamepad2.dpadRightWasPressed()) {
             robot.turret.moveRight();
+        }
+
+        // Auto-off intake once the spindexer is full. Without this, the intake
+        // motor keeps spinning after the 3rd ball loads (autoLoadBall only flips
+        // an internal flag, not the motor) and the next ball pulled in jams
+        // between the intake roller and the spindexer entry. Updating the local
+        // intakeEnabled flag keeps the left_trigger toggle in sync so the next
+        // press cleanly turns intake back on.
+        if (robot.spindexer.getBallCount() >= 3 && intakeEnabled) {
+            robot.intake.off().schedule();
+            intakeEnabled = false;
         }
 
         if (robot.spindexer.getBallCount() == 3) {
