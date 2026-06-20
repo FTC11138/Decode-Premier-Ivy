@@ -26,6 +26,8 @@ public class TeleOp_Solo extends RobotOpMode {
     private boolean gamepad1DpadDownWasDown = false;
     private boolean gamepad1DpadLeftWasDown = false;
     private boolean gamepad1DpadRightWasDown = false;
+    private boolean gamepad2CrossWasDown = false;
+    private boolean gamepad2CircleWasDown = false;
     private boolean intakeEnabled = false;
 
     Pose turretPose;
@@ -41,6 +43,7 @@ public class TeleOp_Solo extends RobotOpMode {
         robot.drivetrain.setFieldCentricEnabled(true);
         robot.drivetrain.clearFieldCentricHeadingReset();
         robot.turret.usePreviousStartingAngle();
+        robot.turret.enableAutoAim();
         robot.intake.off().schedule();
         robot.spindexer.setIntaking(false).schedule();
         intakeEnabled = false;
@@ -75,6 +78,7 @@ public class TeleOp_Solo extends RobotOpMode {
         gamepad1TouchpadWasDown = gamepad1.touchpad;
 
         handleAllianceSelection();
+        handlePoseButtons();
 
         if (robot.turret.autoAimEnabled) {
             TractorBeam.aimTurret(robot.drivetrain.getPose(), robot, Alliance.current);
@@ -216,18 +220,6 @@ public class TeleOp_Solo extends RobotOpMode {
             }
         }
 
-        if (gamepad2.crossWasPressed()) {
-            robot.drivetrain.setPose(
-                    Alliance.current == Alliance.RED ? new Pose(8.1, 7.5, 0) : new Pose(141.5 - 8.1, 7.5, Math.PI)
-            );
-        }
-
-        if (gamepad2.circleWasPressed()) {
-            robot.drivetrain.setPose(robot.drivetrain.getPose().withHeading(
-                    Alliance.current == Alliance.RED ? 0 : Math.PI
-            ));
-        }
-
         if (gamepad2.dpadLeftWasPressed()) {
             robot.turret.moveLeft();
         }
@@ -262,6 +254,22 @@ public class TeleOp_Solo extends RobotOpMode {
             Alliance.current = Alliance.BLUE;
             setAllianceLed();
         }
+    }
+
+    private void handlePoseButtons() {
+        if (gamepad2.cross && !gamepad2CrossWasDown) {
+            robot.drivetrain.setPose(
+                    Alliance.current == Alliance.RED ? new Pose(8.1, 7.5, 0) : new Pose(141.5 - 8.1, 7.5, Math.PI)
+            );
+        }
+        gamepad2CrossWasDown = gamepad2.cross;
+
+        if (gamepad2.circle && !gamepad2CircleWasDown) {
+            robot.drivetrain.setPose(robot.drivetrain.getPose().withHeading(
+                    Alliance.current == Alliance.RED ? 0 : Math.PI
+            ));
+        }
+        gamepad2CircleWasDown = gamepad2.circle;
     }
 
     private void setAllianceLed() {

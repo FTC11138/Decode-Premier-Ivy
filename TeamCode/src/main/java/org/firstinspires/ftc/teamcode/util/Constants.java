@@ -140,7 +140,7 @@ public class Constants {
     public static double maxDeriv = 320.0;
     public static double maxPower = 0.6;
     public static double kS = 0.0;
-    public static double kP_v = 0.015;
+    public static double kP_v = 0.017;
     public static double kI_v = 0;
     public static double kD_v = 0.001;
 //    public static double kP_velo = 0.75;
