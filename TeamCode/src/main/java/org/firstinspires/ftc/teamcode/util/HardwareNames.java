@@ -22,6 +22,8 @@ public class HardwareNames {
     public static String turretEncoder = "frontLeft";
 
     public static String spindexer = "spindexer";
+    // Uncomment this when you add an external encoder on the actual spindexer output shaft.
+    // public static String spindexerEncoder = "spindexerEncoder";
     public static String ranger = "ranger";
 
     private HardwareNames() {
