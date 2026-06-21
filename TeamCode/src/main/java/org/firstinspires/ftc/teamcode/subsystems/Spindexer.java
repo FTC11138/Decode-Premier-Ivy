@@ -20,6 +20,16 @@ import static com.pedropathing.ivy.commands.Commands.instant;
 public class Spindexer {
     private final Robot robot;
     private final DcMotorEx spindexerMotor;
+    /*
+     * OPTIONAL EXTERNAL ENCODER SETUP
+     *
+     * Leave this commented out to keep the spindexer working exactly like it does now.
+     *
+     * If the spindexer drifts because the motor/gear/belt slips during jams, mount a through bore encoder
+     * on the actual spindexer output shaft, uncomment the line below, uncomment HardwareNames.spindexerEncoder,
+     * then uncomment the external-encoder version of getCurrentPosition().
+     */
+    // private final DcMotorEx spindexerEncoder;
     private final DigitalChannel ranger;
     private final Telemetry telemetry;
     private final ElapsedTime timer = new ElapsedTime();
@@ -47,6 +57,7 @@ public class Spindexer {
     public Spindexer(Robot robot) {
         this.robot = robot;
         spindexerMotor = robot.hardwareMap.get(DcMotorEx.class, HardwareNames.spindexer);
+        // spindexerEncoder = robot.hardwareMap.get(DcMotorEx.class, HardwareNames.spindexerEncoder);
         ranger = robot.hardwareMap.get(DigitalChannel.class, HardwareNames.ranger);
         telemetry = robot.telemetry;
 
@@ -57,6 +68,15 @@ public class Spindexer {
         spindexerMotor.setTargetPosition(0);
         spindexerMotor.setMode(DcMotor.RunMode.RUN_TO_POSITION);
         spindexerMotor.setPower(Constants.spindexerHoldPower);
+
+        /*
+         * Optional external encoder reset.
+         *
+         * Before init, manually line the spindexer to slot 0. Then uncomment these two lines so the
+         * external encoder starts at zero and all future position checks use the real spindexer shaft.
+         */
+        // spindexerEncoder.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+        // spindexerEncoder.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
     }
 
     public Command rotate360CW() {
@@ -137,6 +157,19 @@ public class Spindexer {
     public int getCurrentPosition() {
         return spindexerMotor.getCurrentPosition();
     }
+
+    /*
+     * OPTIONAL EXTERNAL ENCODER POSITION
+     *
+     * Uncomment this method and comment out the motor-encoder method above if the through bore encoder
+     * is mounted on the final spindexer output shaft. You may need to add a minus sign if the encoder
+     * counts the opposite direction:
+     *
+     *     return -spindexerEncoder.getCurrentPosition();
+     */
+//    public int getCurrentPosition() {
+//        return spindexerEncoder.getCurrentPosition();
+//    }
 
     public int getTargetPosition() {
         return (int) Math.round(targetPositionTicks);
