@@ -44,6 +44,10 @@ public class Constants {
     // Sort Mode: Largest
     public static double cameraHeightMeters = 0.39267;
     public static double cameraYawDegrees = 0;
+    public static double limelightMaxResetDistanceInches = 18.0;
+    public static double limelightMaxResetHeadingDegrees = 25.0;
+    public static int limelightMinimumTagCount = 1;
+    public static boolean limelightAllowLargePoseReset = false;
 
     /* -------------------------------------------- INTAKE CONSTANTS -------------------------------------------- */
     public static double intakeFastPower = -1;
@@ -88,7 +92,7 @@ public class Constants {
     public static int shootWait = 1800;
     public static double adjHoodMax = 0.02;
     public static double adjHoodMin = 0.48;
-    public static double shootVelFar = -1850;
+    public static double shootVelFar = -650;
 //    public static double shootVelClose = -1450;
 //    public static double shootVelTol = 25;
     public static double shootHoodFar = 0.38;
@@ -98,11 +102,19 @@ public class Constants {
 
     public static double shooterHoodTolerance = 0.015;
 
-    public static double spindexerTicksPerRevolution = 537.7;
-    public static double spindexerDeadbandDegrees = 2.0;
-    public static double spindexerMovePower = 1.0;
-    public static double spindexerShootPower = 0.7;
+    public static double spindexerTicksPerRevolution = 8192.0;
+    public static double spindexerDeadbandDegrees = 1.0;
+    public static double spindexerMovePower = 0.95;
+    public static double spindexerShootPower = 0.86;
     public static double spindexerHoldPower = 0.25;
+    public static double spindexerPositionKp = 0.00045;
+    public static double spindexerPositionKi = 0.0;
+    public static double spindexerPositionKd = 0.00002;
+    public static double spindexerMaxIntegral = 1500.0;
+    public static double spindexerMinimumMovePower = 0.05;
+    public static long spindexerMoveTimeoutMs = 3000;
+    public static boolean spindexerEncoderReversed = false;
+    public static boolean spindexerMotorReversed = false;
     public static boolean autoSpindex = true;
     public static long sensorWait = 325;
     public static long spindexerAutoLoadDelayMs = 100;
