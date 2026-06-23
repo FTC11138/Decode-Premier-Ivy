@@ -12,6 +12,7 @@ import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
 import org.firstinspires.ftc.robotcore.external.navigation.Pose3D;
 import org.firstinspires.ftc.robotcore.external.navigation.Position;
 import org.firstinspires.ftc.teamcode.subsystems.Drivetrain;
+import org.firstinspires.ftc.teamcode.util.Constants;
 import org.firstinspires.ftc.teamcode.util.HardwareNames;
 
 public class LLPoseResetter {
@@ -33,6 +34,10 @@ public class LLPoseResetter {
     public boolean resetPose(Drivetrain drivetrain) {
         Pose cameraPose = getRobotPoseFromCamera();
         if (cameraPose == null) return false;
+
+        if (!isReasonableReset(drivetrain.getPose(), cameraPose)) {
+            return false;
+        }
 
         drivetrain.setPose(cameraPose);
         status = String.format(
@@ -60,12 +65,47 @@ public class LLPoseResetter {
             return null;
         }
 
-        if (result.getBotposeTagCount() <= 0) {
-            status = "No AprilTags in botpose";
+        int tagCount = result.getBotposeTagCount();
+        if (tagCount < Constants.limelightMinimumTagCount) {
+            status = String.format("Need %d tags, saw %d", Constants.limelightMinimumTagCount, tagCount);
             return null;
         }
 
         return convertToPedroPose(result.getBotpose());
+    }
+
+    private boolean isReasonableReset(Pose currentPose, Pose cameraPose) {
+        if (Constants.limelightAllowLargePoseReset) {
+            return true;
+        }
+
+        double distanceError = Math.hypot(
+                cameraPose.getX() - currentPose.getX(),
+                cameraPose.getY() - currentPose.getY()
+        );
+        double headingErrorDegrees = Math.abs(AngleUnit.normalizeDegrees(
+                Math.toDegrees(cameraPose.getHeading() - currentPose.getHeading())
+        ));
+
+        if (distanceError > Constants.limelightMaxResetDistanceInches) {
+            status = String.format(
+                    "Rejected LL reset: %.1f in jump > %.1f",
+                    distanceError,
+                    Constants.limelightMaxResetDistanceInches
+            );
+            return false;
+        }
+
+        if (headingErrorDegrees > Constants.limelightMaxResetHeadingDegrees) {
+            status = String.format(
+                    "Rejected LL reset: %.1f deg jump > %.1f",
+                    headingErrorDegrees,
+                    Constants.limelightMaxResetHeadingDegrees
+            );
+            return false;
+        }
+
+        return true;
     }
 
     private Pose convertToPedroPose(Pose3D botpose) {

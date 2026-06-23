@@ -5,6 +5,7 @@ import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.DigitalChannel;
 import com.qualcomm.robotcore.util.ElapsedTime;
+import com.qualcomm.robotcore.util.Range;
 
 import org.firstinspires.ftc.robotcore.external.Telemetry;
 import org.firstinspires.ftc.robotcore.external.navigation.CurrentUnit;
@@ -20,16 +21,7 @@ import static com.pedropathing.ivy.commands.Commands.instant;
 public class Spindexer {
     private final Robot robot;
     private final DcMotorEx spindexerMotor;
-    /*
-     * OPTIONAL EXTERNAL ENCODER SETUP
-     *
-     * Leave this commented out to keep the spindexer working exactly like it does now.
-     *
-     * If the spindexer drifts because the motor/gear/belt slips during jams, mount a through bore encoder
-     * on the actual spindexer output shaft, uncomment the line below, uncomment HardwareNames.spindexerEncoder,
-     * then uncomment the external-encoder version of getCurrentPosition().
-     */
-    // private final DcMotorEx spindexerEncoder;
+    private final DcMotorEx spindexerEncoder;
     private final DigitalChannel ranger;
     private final Telemetry telemetry;
     private final ElapsedTime timer = new ElapsedTime();
@@ -50,33 +42,34 @@ public class Spindexer {
     private long autoLoadTime = 0;
     private int ballCount = 0;
 
-    private boolean intaking = true;
+    private boolean intaking = false;
     private boolean shooting = false;
     private boolean currentStuck = false;
+    private boolean activeMove = false;
+    private boolean wasMoving = false;
+    private long moveStartTime = 0;
+    private int encoderZeroTicks = 0;
+    private double positionIntegral = 0;
+    private double lastPositionError = 0;
+    private long lastPidTimeNanos = System.nanoTime();
+    private double lastPidOutput = 0;
 
     public Spindexer(Robot robot) {
         this.robot = robot;
         spindexerMotor = robot.hardwareMap.get(DcMotorEx.class, HardwareNames.spindexer);
-        // spindexerEncoder = robot.hardwareMap.get(DcMotorEx.class, HardwareNames.spindexerEncoder);
+        spindexerEncoder = robot.hardwareMap.get(DcMotorEx.class, HardwareNames.spindexerEncoder);
         ranger = robot.hardwareMap.get(DigitalChannel.class, HardwareNames.ranger);
         telemetry = robot.telemetry;
 
         ranger.setMode(DigitalChannel.Mode.INPUT);
 
         spindexerMotor.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
-        spindexerMotor.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
-        spindexerMotor.setTargetPosition(0);
-        spindexerMotor.setMode(DcMotor.RunMode.RUN_TO_POSITION);
-        spindexerMotor.setPower(Constants.spindexerHoldPower);
+        spindexerMotor.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+        spindexerMotor.setPower(0);
 
-        /*
-         * Optional external encoder reset.
-         *
-         * Before init, manually line the spindexer to slot 0. Then uncomment these two lines so the
-         * external encoder starts at zero and all future position checks use the real spindexer shaft.
-         */
-        // spindexerEncoder.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
-        // spindexerEncoder.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+        // Do not STOP_AND_RESET this encoder if it is plugged into a drive motor port.
+        encoderZeroTicks = spindexerEncoder.getCurrentPosition();
+        targetPositionTicks = getCurrentPosition();
     }
 
     public Command rotate360CW() {
@@ -128,9 +121,10 @@ public class Spindexer {
 
     public Command stop() {
         return instant(() -> {
-            targetPositionTicks = spindexerMotor.getCurrentPosition();
-            spindexerMotor.setTargetPosition(getTargetPosition());
+            activeMove = false;
+            targetPositionTicks = getCurrentPosition();
             spindexerMotor.setPower(0);
+            resetPositionController();
         }).requiring(spindexerMotor);
     }
 
@@ -151,25 +145,13 @@ public class Spindexer {
     }
 
     public boolean isMoving() {
-        return Math.abs(targetPositionTicks - getCurrentPosition()) > deadbandTicks();
+        return activeMove && Math.abs(targetPositionTicks - getCurrentPosition()) > deadbandTicks();
     }
 
     public int getCurrentPosition() {
-        return spindexerMotor.getCurrentPosition();
+        int direction = Constants.spindexerEncoderReversed ? -1 : 1;
+        return direction * (spindexerEncoder.getCurrentPosition() - encoderZeroTicks);
     }
-
-    /*
-     * OPTIONAL EXTERNAL ENCODER POSITION
-     *
-     * Uncomment this method and comment out the motor-encoder method above if the through bore encoder
-     * is mounted on the final spindexer output shaft. You may need to add a minus sign if the encoder
-     * counts the opposite direction:
-     *
-     *     return -spindexerEncoder.getCurrentPosition();
-     */
-//    public int getCurrentPosition() {
-//        return spindexerEncoder.getCurrentPosition();
-//    }
 
     public int getTargetPosition() {
         return (int) Math.round(targetPositionTicks);
@@ -186,9 +168,8 @@ public class Spindexer {
     private void moveRelative(double deltaTicks, double power) {
         targetPositionTicks += deltaTicks;
         activePower = Math.abs(power);
-        spindexerMotor.setTargetPosition(getTargetPosition());
-        spindexerMotor.setMode(DcMotor.RunMode.RUN_TO_POSITION);
-        spindexerMotor.setPower(activePower);
+        activeMove = true;
+        resetPositionController();
     }
 
     private void ignoreSensor(long waitMs) {
@@ -205,6 +186,80 @@ public class Spindexer {
         return (Constants.spindexerDeadbandDegrees / 360.0) * Constants.spindexerTicksPerRevolution;
     }
 
+    private double nearestSlotPosition(double positionTicks) {
+        double slotTicks = ticks120Degrees();
+        return Math.round(positionTicks / slotTicks) * slotTicks;
+    }
+
+    private void snapTargetToNearestSlot() {
+        targetPositionTicks = nearestSlotPosition(getCurrentPosition());
+        resetPositionController();
+    }
+
+    private void cancelMoveAndSnapAfterJam() {
+        activeMove = false;
+        snapTargetToNearestSlot();
+        spindexerMotor.setPower(0);
+        autoLoadPending = false;
+    }
+
+    private void resetPositionController() {
+        positionIntegral = 0;
+        lastPositionError = targetPositionTicks - getCurrentPosition();
+        lastPidTimeNanos = System.nanoTime();
+        lastPidOutput = 0;
+    }
+
+    private void updateMotorPower() {
+        if (!activeMove) {
+            spindexerMotor.setPower(0);
+            lastPidOutput = 0;
+            return;
+        }
+
+        long now = System.nanoTime();
+        double dt = (now - lastPidTimeNanos) / 1e9;
+        if (dt <= 0 || dt > 0.25) dt = 0.02;
+
+        double error = targetPositionTicks - getCurrentPosition();
+        if (Math.abs(error) <= deadbandTicks()) {
+            activeMove = false;
+            spindexerMotor.setPower(0);
+            resetPositionController();
+            return;
+        }
+
+        positionIntegral += error * dt;
+        positionIntegral = Range.clip(
+                positionIntegral,
+                -Constants.spindexerMaxIntegral,
+                Constants.spindexerMaxIntegral
+        );
+
+        double derivative = (error - lastPositionError) / dt;
+        lastPositionError = error;
+        lastPidTimeNanos = now;
+
+        double power = Range.clip(
+                error * Constants.spindexerPositionKp
+                        + positionIntegral * Constants.spindexerPositionKi
+                        + derivative * Constants.spindexerPositionKd,
+                -activePower,
+                activePower
+        );
+
+        if (Math.abs(error) > deadbandTicks() * 3.0 && Math.abs(power) < Constants.spindexerMinimumMovePower) {
+            power = Math.signum(error) * Constants.spindexerMinimumMovePower;
+        }
+
+        if (Constants.spindexerMotorReversed) {
+            power *= -1.0;
+        }
+
+        lastPidOutput = power;
+        spindexerMotor.setPower(power);
+    }
+
     private void autoLoadBall() {
         autoLoadPending = false;
         ballCount++;
@@ -219,14 +274,27 @@ public class Spindexer {
         return infinite(() -> {
             long now = timer.time(TimeUnit.MILLISECONDS);
 
-            spindexerMotor.setTargetPosition(getTargetPosition());
-            spindexerMotor.setMode(DcMotor.RunMode.RUN_TO_POSITION);
-            spindexerMotor.setPower(isMoving() ? activePower : Constants.spindexerHoldPower);
+            updateMotorPower();
+
+            boolean moving = isMoving();
+            if (moving && !wasMoving) {
+                moveStartTime = now;
+            }
+
+            if (!moving && wasMoving) {
+                lastBallDetected = ballDetected;
+            }
+
+            if (moving && now - moveStartTime > Constants.spindexerMoveTimeoutMs) {
+                cancelMoveAndSnapAfterJam();
+            }
+
+            wasMoving = moving;
 
             canRotate = ranger.getState();
             ballDetected = canRotate;
 
-            if (ballDetected && !lastBallDetected && Constants.autoSpindex && intaking && !ignoreSensor) {
+            if (ballDetected && !lastBallDetected && Constants.autoSpindex && intaking && !ignoreSensor && !moving) {
                 ignoreSensor(Constants.sensorWait);
                 autoLoadPending = true;
                 autoLoadTime = now + Constants.spindexerAutoLoadDelayMs;
@@ -241,6 +309,7 @@ public class Spindexer {
                 currentStuck = true;
                 ignoreUnstuck = true;
                 lastUnstuckTime = now;
+                cancelMoveAndSnapAfterJam();
                 robot.intake.shortReverse().schedule();
             }
 
@@ -256,9 +325,13 @@ public class Spindexer {
             lastBallDetected = ballDetected;
 
             telemetry.addData("Spindexer Position", getCurrentPosition());
+            telemetry.addData("Spindexer Raw Encoder", spindexerEncoder.getCurrentPosition());
+            telemetry.addData("Spindexer Encoder Zero", encoderZeroTicks);
             telemetry.addData("Spindexer Target", getTargetPosition());
             telemetry.addData("Spindexer Moving", isMoving());
             telemetry.addData("Spindexer Current", current);
+            telemetry.addData("Spindexer Motor Power", spindexerMotor.getPower());
+            telemetry.addData("Spindexer PID Output", lastPidOutput);
             telemetry.addData("Spindexer Stuck Current", currentStuck);
             telemetry.addData("Spindexer Ranger Can Rotate", canRotate);
             telemetry.addData("Spindexer Ball Count", ballCount);
