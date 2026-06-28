@@ -37,6 +37,9 @@ public class Drivetrain {
     private boolean fieldCentricEnabled = true;
     private double headingTargetRadians = 0;
     private double fieldCentricHeadingOffsetRadians = 0;
+    private double velocityInchesPerSecond = 0;
+    private Pose lastVelocityPose = null;
+    private long lastVelocityTime = 0;
 
     public Drivetrain(Robot robot) {
         follower = createFollower(robot.hardwareMap);
@@ -133,6 +136,10 @@ public class Drivetrain {
         return follower.getPose();
     }
 
+    public double getVelocityInchesPerSecond() {
+        return velocityInchesPerSecond;
+    }
+
     public void setPose(Pose pose) {
         follower.setPose(pose);
     }
@@ -161,6 +168,20 @@ public class Drivetrain {
         return infinite(() -> {
             org.firstinspires.ftc.teamcode.pedroPathing.Constants.applyTunableConstants();
             follower.update();
+
+            Pose currentPose = follower.getPose();
+            long nowNs = System.nanoTime();
+            if (lastVelocityPose != null) {
+                double dt = (nowNs - lastVelocityTime) / 1e9;
+                if (dt >= 0.005 && dt < 0.5) {
+                    double dx = currentPose.getX() - lastVelocityPose.getX();
+                    double dy = currentPose.getY() - lastVelocityPose.getY();
+                    velocityInchesPerSecond = Math.hypot(dx, dy) / dt;
+                }
+            }
+            lastVelocityPose = currentPose;
+            lastVelocityTime = nowNs;
+
             poseTransfer = follower.getPose();
             poseTransferReady = true;
 

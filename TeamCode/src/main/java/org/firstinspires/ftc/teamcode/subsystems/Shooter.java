@@ -5,6 +5,7 @@ import com.qualcomm.robotcore.hardware.Servo;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.DcMotorSimple;
+import com.qualcomm.robotcore.hardware.VoltageSensor;
 import com.qualcomm.robotcore.util.Range;
 import org.firstinspires.ftc.robotcore.external.Telemetry;
 import org.firstinspires.ftc.teamcode.math.TurretLocation;
@@ -22,6 +23,10 @@ public class Shooter {
     private final Servo adjustableHood;
     private final Telemetry telemetry;
     private final Drivetrain drivetrain;
+    private final VoltageSensor voltageSensor;
+    private double cachedVoltage = Constants.shooterNominalVoltage;
+    private long lastVoltageReadMs = 0;
+    private double voltageScale = 1.0;
     private boolean tempOverride = false;
     private boolean hoodOverride = false;
     private boolean on = false;
@@ -32,6 +37,9 @@ public class Shooter {
         flywheelMotorTop = robot.hardwareMap.get(DcMotorEx.class, HardwareNames.flywheelTop);
         flywheelMotorBottom = robot.hardwareMap.get(DcMotorEx.class, HardwareNames.flywheelBottom);
         adjustableHood = robot.hardwareMap.get(Servo.class, HardwareNames.adjustableHood);
+        voltageSensor = robot.hardwareMap.voltageSensor.iterator().hasNext()
+                ? robot.hardwareMap.voltageSensor.iterator().next()
+                : null;
         initMotor(flywheelMotorTop);
         initMotor(flywheelMotorBottom);
         applyMotorDirections();
@@ -90,7 +98,8 @@ public class Shooter {
             double kI,
             double kD,
             double kV,
-            double kS
+            double kS,
+            double voltageScale
     ) {
         long now = System.nanoTime();
         double dt = (now - flywheelLastTime) / 1e9;
@@ -100,8 +109,12 @@ public class Shooter {
         }
         double error = targetVelocity - currentVelocity;
 
-        flywheelIntegral += error * dt;
-        flywheelIntegral = Math.max(-5000, Math.min(5000, flywheelIntegral));
+        // Integral-zone guard: only accumulate when close to target so the
+        // integral does not wind up during the large-error spin-up phase.
+        if (Math.abs(error) <= Constants.shooterIntegralZoneTps) {
+            flywheelIntegral += error * dt;
+            flywheelIntegral = Math.max(-5000, Math.min(5000, flywheelIntegral));
+        }
 
         double derivative = (error - flywheelLastError) / dt;
 
@@ -110,7 +123,10 @@ public class Shooter {
 
         double pid = (kP * error) + (kI * flywheelIntegral) + (kD * derivative);
         double feedforward = (kV * targetVelocity) + (kS * Math.signum(targetVelocity));
-        return Math.max(-1, Math.min(1, pid + feedforward));
+        // Voltage compensation: scale the whole command so the delivered motor
+        // voltage stays constant regardless of battery sag.
+        double output = (pid + feedforward) * voltageScale;
+        return Math.max(-1, Math.min(1, output));
     }
 
     private double getVelocity() {
@@ -133,6 +149,8 @@ public class Shooter {
 
     public void turnOff() {
         on = false;
+        flywheelIntegral = 0;
+        flywheelLastError = 0;
     }
 
     public void toggle() {
@@ -147,6 +165,18 @@ public class Shooter {
             double goalDistance = WaveLength.getDistanceToGoal(turretPose, Alliance.current);
             applyMotorDirections();
 
+            // Refresh battery voltage at ~10 Hz only; the reading is a hub
+            // round-trip (~2-3 ms, not bulk-cached) and voltage moves slowly.
+            long nowMs = System.currentTimeMillis();
+            if (voltageSensor != null && nowMs - lastVoltageReadMs >= 100) {
+                cachedVoltage = voltageSensor.getVoltage();
+                lastVoltageReadMs = nowMs;
+            }
+            voltageScale = 1.0;
+            if (Constants.shooterVoltageComp && cachedVoltage > 6.0) {
+                voltageScale = Range.clip(Constants.shooterNominalVoltage / cachedVoltage, 1.0, 1.5);
+            }
+
             if (on) {
                 target = Constants.shooterOverride ? Math.abs(Constants.shooterOverrideTarget) : (tempOverride ? target : WaveLength.getVelocityWithInterpolation(turretPose, Alliance.current));
                 hoodTarget = hoodOverride ? hoodTarget : WaveLength.getHoodWithInterpolation(turretPose, Alliance.current);
@@ -157,7 +187,8 @@ public class Shooter {
                         Constants.shooterKi,
                         Constants.shooterKd,
                         Constants.shooterKv,
-                        Constants.shooterKs
+                        Constants.shooterKs,
+                        voltageScale
                 );
                 setPower(Range.clip(Math.signum(Constants.shooterPowerSign) * Math.max(0, pidPower), -1, 1));
             } else {
@@ -178,6 +209,8 @@ public class Shooter {
             telemetry.addData("Flywheel Bottom Power", flywheelMotorBottom.getPower());
             telemetry.addData("Hood Target", hoodTarget);
             telemetry.addData("Hood Position", adjustableHood.getPosition());
+            telemetry.addData("Flywheel VoltScale", voltageScale);
+            telemetry.addData("Battery V", cachedVoltage);
         });
     }
 }

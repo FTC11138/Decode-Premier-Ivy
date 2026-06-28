@@ -12,6 +12,7 @@ public class Constants {
     public static boolean robotCentric = false;
     public static double odoY = 4.091074485478439;
     public static double odoX = -6.032020989365465;
+    public static double fieldWidth = 141.5;
 
     public static double driveForwardMultiplier = 1.4;
     public static double driveStrafeMultiplier = 1.4;
@@ -66,6 +67,15 @@ public class Constants {
     public static double shooterKd = 0;
     public static double shooterKs = 0.065;
     public static double shooterKv = 0.000365;
+    // Voltage compensation: scales flywheel output by (nominal / measured) so the
+    // motor receives constant voltage as the battery sags. When comp is off or the
+    // battery is at nominal, the scale is 1.0 and behavior is unchanged.
+    public static boolean shooterVoltageComp = true;     // master switch
+    public static double shooterNominalVoltage = 12.0;   // voltage kV was tuned at
+    // Integral-zone: only accumulate the flywheel integral when |error| is within
+    // this window, preventing windup during spin-up. shooterKi above is the
+    // integral's own switch (0 = disabled).
+    public static double shooterIntegralZoneTps = 150;
     public static int shooterVelocityTolerance = 25;
     public static boolean shooterOverride = false;
     public static double shooterOverrideTarget = 1000;

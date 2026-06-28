@@ -19,7 +19,7 @@ public class ShooterInterpolationTuning extends RobotOpMode {
     private static final double[] FAR_Y = new double[]{6, 27};
     private static final double[] CLOSE_X = new double[]{38, 61, 85};
     private static final double[] CLOSE_Y = new double[]{63, 88, 111, 135.5};
-    private static final double FIELD_WIDTH = 141.5;
+    private static final double FIELD_WIDTH = Constants.fieldWidth;
 
     public static double tuningVelocity = 1500;
     public static double tuningHood = 0.38;

@@ -29,6 +29,7 @@ public class TeleOp_Solo extends RobotOpMode {
     private boolean gamepad2CrossWasDown = false;
     private boolean gamepad2CircleWasDown = false;
     private boolean intakeEnabled = false;
+    private boolean spindexerFullRumbleFired = false;
 
     Pose turretPose;
     private LLPoseResetter llPoseResetter;
@@ -79,6 +80,8 @@ public class TeleOp_Solo extends RobotOpMode {
 
         handleAllianceSelection();
         handlePoseButtons();
+
+        llPoseResetter.periodicUpdate(robot.drivetrain);
 
         if (robot.turret.autoAimEnabled) {
             TractorBeam.aimTurret(robot.drivetrain.getPose(), robot, Alliance.current);
@@ -239,8 +242,11 @@ public class TeleOp_Solo extends RobotOpMode {
             intakeEnabled = false;
         }
 
-        if (robot.spindexer.getBallCount() == 3) {
+        if (robot.spindexer.getBallCount() == 3 && !spindexerFullRumbleFired) {
             gamepad2.rumble(100);
+            spindexerFullRumbleFired = true;
+        } else if (robot.spindexer.getBallCount() < 3) {
+            spindexerFullRumbleFired = false;
         }
     }
 
@@ -259,7 +265,7 @@ public class TeleOp_Solo extends RobotOpMode {
     private void handlePoseButtons() {
         if (gamepad2.cross && !gamepad2CrossWasDown) {
             robot.drivetrain.setPose(
-                    Alliance.current == Alliance.RED ? new Pose(8.1, 7.5, 0) : new Pose(141.5 - 8.1, 7.5, Math.PI)
+                    Alliance.current == Alliance.RED ? new Pose(8.1, 7.5, 0) : new Pose(Constants.fieldWidth - 8.1, 7.5, Math.PI)
             );
         }
         gamepad2CrossWasDown = gamepad2.cross;

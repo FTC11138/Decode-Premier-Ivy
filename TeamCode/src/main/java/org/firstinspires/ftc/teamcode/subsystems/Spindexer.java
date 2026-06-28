@@ -90,7 +90,7 @@ public class Spindexer {
     public Command rotate15CW() {
         return instant(() -> {
             moveRelative(Constants.spindexerTicksPerRevolution / 15.0, Constants.spindexerMovePower);
-            ballCount--;
+            ballCount = Math.max(0, ballCount - 1);
         }).requiring(spindexerMotor);
     }
 
@@ -102,7 +102,7 @@ public class Spindexer {
         return instant(() -> {
             moveRelative(-ticks120Degrees(), Constants.spindexerMovePower);
             ignoreSensor(Constants.shootSingleSensorWait);
-            ballCount--;
+            ballCount = Math.max(0, ballCount - 1);
         }).requiring(spindexerMotor);
     }
 
@@ -119,7 +119,7 @@ public class Spindexer {
     }
 
     public Command decrementBallCount() {
-        return instant(() -> ballCount--);
+        return instant(() -> ballCount = Math.max(0, ballCount - 1));
     }
 
     public Command setIntaking(boolean intaking) {
