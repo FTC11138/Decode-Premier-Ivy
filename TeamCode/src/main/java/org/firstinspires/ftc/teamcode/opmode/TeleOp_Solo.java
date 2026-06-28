@@ -182,7 +182,8 @@ public class TeleOp_Solo extends RobotOpMode {
 
         if (gamepad1.circleWasPressed()) {
             instant(() -> {
-                robot.shooter.useInterpolation();
+                robot.shooter.setTarget(Constants.shootVelFar);
+                robot.shooter.setHoodPosition(Constants.shootHoodFar);
                 robot.shooter.turnOn();
             }).schedule();
         }

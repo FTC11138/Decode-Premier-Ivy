@@ -19,9 +19,10 @@ public class HardwareNames {
     public static String adjustableHood = "adjHood";
 
     public static String turretServo = "turret";
-    public static String turretEncoder = "frontLeft";
+    public static String turretEncoder = "frontLeft"; //Control Hub Port 0
 
     public static String spindexer = "spindexer";
+    public static String spindexerEncoder = "backLeft"; //Control Hub Port 3
     public static String ranger = "ranger";
 
     private HardwareNames() {
