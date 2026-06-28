@@ -44,8 +44,11 @@ public class Spindexer {
 
     private boolean intaking = false;
     private boolean shooting = false;
-    private boolean currentStuck = false;
+    private boolean intakeStuck = false;
+    private boolean jamIndexPending = false;
+    private long intakeHighCurrentStartTime = -1;
     private boolean activeMove = false;
+    private boolean targetSettled = false;
     private boolean wasMoving = false;
     private long moveStartTime = 0;
     private int encoderZeroTicks = 0;
@@ -140,12 +143,18 @@ public class Spindexer {
         return instant(() -> {
             this.intaking = intaking;
             this.shooting = false;
-            if (!intaking) autoLoadPending = false;
+            intakeHighCurrentStartTime = -1;
+            if (!intaking) {
+                autoLoadPending = false;
+                jamIndexPending = false;
+            }
         });
     }
 
     public boolean isMoving() {
-        return activeMove && Math.abs(targetPositionTicks - getCurrentPosition()) > deadbandTicks();
+        return activeMove
+                && !targetSettled
+                && Math.abs(targetPositionTicks - getCurrentPosition()) > deadbandTicks();
     }
 
     public int getCurrentPosition() {
@@ -161,14 +170,26 @@ public class Spindexer {
         return ballCount;
     }
 
+    public void resetEncoderZero() {
+        spindexerMotor.setPower(0);
+        encoderZeroTicks = spindexerEncoder.getCurrentPosition();
+        targetPositionTicks = 0;
+        activeMove = false;
+        targetSettled = false;
+        autoLoadPending = false;
+        jamIndexPending = false;
+        resetPositionController();
+    }
+
     public double getCurrent() {
-        return spindexerMotor.getCurrent(CurrentUnit.AMPS);
+        return spindexerMotor.getCurrent(CurrentUnit.MILLIAMPS);
     }
 
     private void moveRelative(double deltaTicks, double power) {
         targetPositionTicks += deltaTicks;
         activePower = Math.abs(power);
         activeMove = true;
+        targetSettled = false;
         resetPositionController();
     }
 
@@ -184,6 +205,16 @@ public class Spindexer {
 
     private double deadbandTicks() {
         return (Constants.spindexerDeadbandDegrees / 360.0) * Constants.spindexerTicksPerRevolution;
+    }
+
+    private double approachZoneTicks() {
+        return (Constants.spindexerApproachZoneDegrees / 360.0)
+                * Constants.spindexerTicksPerRevolution;
+    }
+
+    private double holdCorrectionTicks() {
+        return (Constants.spindexerHoldCorrectionDegrees / 360.0)
+                * Constants.spindexerTicksPerRevolution;
     }
 
     private double nearestSlotPosition(double positionTicks) {
@@ -222,8 +253,20 @@ public class Spindexer {
         if (dt <= 0 || dt > 0.25) dt = 0.02;
 
         double error = targetPositionTicks - getCurrentPosition();
+        if (targetSettled && Math.abs(error) <= holdCorrectionTicks()) {
+            spindexerMotor.setPower(0);
+            lastPidOutput = 0;
+            return;
+        }
+
+        if (targetSettled) {
+            targetSettled = false;
+            resetPositionController();
+            error = targetPositionTicks - getCurrentPosition();
+        }
+
         if (Math.abs(error) <= deadbandTicks()) {
-            activeMove = false;
+            targetSettled = true;
             spindexerMotor.setPower(0);
             resetPositionController();
             return;
@@ -248,8 +291,18 @@ public class Spindexer {
                 activePower
         );
 
-        if (Math.abs(error) > deadbandTicks() * 3.0 && Math.abs(power) < Constants.spindexerMinimumMovePower) {
-            power = Math.signum(error) * Constants.spindexerMinimumMovePower;
+        double minimumPower = Constants.spindexerMinimumMovePower;
+        if (Math.abs(error) <= approachZoneTicks()) {
+            minimumPower = Constants.spindexerApproachMinimumPower;
+            power = Range.clip(
+                    power,
+                    -Constants.spindexerApproachMaxPower,
+                    Constants.spindexerApproachMaxPower
+            );
+        }
+
+        if (Math.abs(power) < minimumPower) {
+            power = Math.signum(error) * minimumPower;
         }
 
         if (Constants.spindexerMotorReversed) {
@@ -261,6 +314,10 @@ public class Spindexer {
     }
 
     private void autoLoadBall() {
+        if (!autoLoadPending || !intaking || shooting || isMoving()) {
+            return;
+        }
+
         autoLoadPending = false;
         ballCount++;
         if (ballCount < 3) {
@@ -283,6 +340,7 @@ public class Spindexer {
 
             if (!moving && wasMoving) {
                 lastBallDetected = ballDetected;
+                jamIndexPending = false;
             }
 
             if (moving && now - moveStartTime > Constants.spindexerMoveTimeoutMs) {
@@ -300,22 +358,47 @@ public class Spindexer {
                 autoLoadTime = now + Constants.spindexerAutoLoadDelayMs;
             }
 
-            if (autoLoadPending && now >= autoLoadTime) {
+            if (autoLoadPending && now >= autoLoadTime && !moving) {
                 autoLoadBall();
             }
 
-            double current = getCurrent();
-            if (current >= Constants.stuckCurrent && !ignoreUnstuck) {
-                currentStuck = true;
+            double spindexerCurrent = getCurrent();
+            double intakeCurrent = robot.intake.getIntakeCurrent();
+            if (intaking
+                    && !shooting
+                    && robot.intake.isOn()
+                    && intakeCurrent >= Constants.intakeStuckCurrentMilliamps) {
+                if (intakeHighCurrentStartTime < 0) {
+                    intakeHighCurrentStartTime = now;
+                }
+            } else {
+                intakeHighCurrentStartTime = -1;
+            }
+
+            boolean intakeCurrentSustained =
+                    intakeHighCurrentStartTime >= 0
+                            && now - intakeHighCurrentStartTime
+                            >= Constants.intakeStuckDetectionTimeMs;
+
+            if (intaking
+                    && !shooting
+                    && intakeCurrentSustained
+                    && !ignoreUnstuck) {
+                intakeStuck = true;
                 ignoreUnstuck = true;
                 lastUnstuckTime = now;
-                cancelMoveAndSnapAfterJam();
+                intakeHighCurrentStartTime = -1;
                 robot.intake.shortReverse().schedule();
+
+                if (!autoLoadPending && !jamIndexPending) {
+                    jamIndexPending = true;
+                    rotate120CCW().schedule();
+                }
             }
 
             if (now - lastUnstuckTime >= Constants.spindexerUnstuckWaitMs) {
                 ignoreUnstuck = false;
-                currentStuck = false;
+                intakeStuck = false;
             }
 
             if (now - lastDetectTime >= sensorWait) {
@@ -329,10 +412,14 @@ public class Spindexer {
             telemetry.addData("Spindexer Encoder Zero", encoderZeroTicks);
             telemetry.addData("Spindexer Target", getTargetPosition());
             telemetry.addData("Spindexer Moving", isMoving());
-            telemetry.addData("Spindexer Current", current);
+            telemetry.addData("Spindexer Current mA", spindexerCurrent);
+            telemetry.addData("Intake Current mA", intakeCurrent);
             telemetry.addData("Spindexer Motor Power", spindexerMotor.getPower());
             telemetry.addData("Spindexer PID Output", lastPidOutput);
-            telemetry.addData("Spindexer Stuck Current", currentStuck);
+            telemetry.addData("Spindexer Intake Stuck", intakeStuck);
+            telemetry.addData("Spindexer Jam Index Pending", jamIndexPending);
+            telemetry.addData("Intake High Current Time",
+                    intakeHighCurrentStartTime < 0 ? 0 : now - intakeHighCurrentStartTime);
             telemetry.addData("Spindexer Ranger Can Rotate", canRotate);
             telemetry.addData("Spindexer Ball Count", ballCount);
             telemetry.addData("Spindexer Ignore Sensor", ignoreSensor);

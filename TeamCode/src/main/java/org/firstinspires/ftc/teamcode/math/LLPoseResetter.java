@@ -15,6 +15,9 @@ import org.firstinspires.ftc.teamcode.subsystems.Drivetrain;
 import org.firstinspires.ftc.teamcode.util.Constants;
 import org.firstinspires.ftc.teamcode.util.HardwareNames;
 
+import java.util.ArrayList;
+import java.util.List;
+
 public class LLPoseResetter {
     private final Limelight3A camera;
     private String status = "Waiting for reset";
@@ -32,7 +35,12 @@ public class LLPoseResetter {
     }
 
     public boolean resetPose(Drivetrain drivetrain) {
-        Pose cameraPose = getRobotPoseFromCamera();
+        if (drivetrain.isMotionCommanded(Constants.limelightMotionCommandThreshold)) {
+            status = "Stop robot before LL reset";
+            return false;
+        }
+
+        Pose cameraPose = getRobotPoseFromCamera(drivetrain);
         if (cameraPose == null) return false;
 
         if (!isReasonableReset(drivetrain.getPose(), cameraPose)) {
@@ -53,25 +61,117 @@ public class LLPoseResetter {
         return status;
     }
 
-    private Pose getRobotPoseFromCamera() {
-        LLResult result = camera.getLatestResult();
-        if (result == null) {
-            status = "No Limelight result";
+    private Pose getRobotPoseFromCamera(Drivetrain drivetrain) {
+        List<Pose> samples = new ArrayList<>();
+        long lastTimestamp = Long.MIN_VALUE;
+        long startTime = System.currentTimeMillis();
+
+        while (samples.size() < Constants.limelightPoseSampleCount
+                && System.currentTimeMillis() - startTime
+                < Constants.limelightPoseCollectionTimeoutMs) {
+            if (drivetrain.isMotionCommanded(Constants.limelightMotionCommandThreshold)) {
+                status = "LL reset aborted: robot moving";
+                return null;
+            }
+
+            LLResult result = camera.getLatestResult();
+            if (result == null) {
+                sleepBriefly();
+                continue;
+            }
+
+            long timestamp = result.getControlHubTimeStamp();
+            if (timestamp == lastTimestamp) {
+                sleepBriefly();
+                continue;
+            }
+            lastTimestamp = timestamp;
+
+            Pose sample = getRobotPoseFromResult(result);
+            if (sample != null) {
+                samples.add(sample);
+            }
+            sleepBriefly();
+        }
+
+        if (samples.size() < Constants.limelightMinimumPoseSamples) {
+            status = String.format(
+                    "Need %d LL samples, got %d",
+                    Constants.limelightMinimumPoseSamples,
+                    samples.size()
+            );
             return null;
         }
 
+        Pose preliminaryAverage = averagePoses(samples);
+        List<Pose> filteredSamples = new ArrayList<>();
+        for (Pose sample : samples) {
+            double distance = Math.hypot(
+                    sample.getX() - preliminaryAverage.getX(),
+                    sample.getY() - preliminaryAverage.getY()
+            );
+            if (distance <= Constants.limelightOutlierDistanceInches) {
+                filteredSamples.add(sample);
+            }
+        }
+
+        if (filteredSamples.size() < Constants.limelightMinimumPoseSamples) {
+            status = String.format(
+                    "Rejected LL samples: %d/%d kept",
+                    filteredSamples.size(),
+                    samples.size()
+            );
+            return null;
+        }
+
+        status = String.format(
+                "LL averaged %d/%d samples",
+                filteredSamples.size(),
+                samples.size()
+        );
+        return averagePoses(filteredSamples);
+    }
+
+    private Pose getRobotPoseFromResult(LLResult result) {
         if (!result.isValid()) {
-            status = "Limelight result invalid";
             return null;
         }
 
-        int tagCount = result.getBotposeTagCount();
-        if (tagCount < Constants.limelightMinimumTagCount) {
-            status = String.format("Need %d tags, saw %d", Constants.limelightMinimumTagCount, tagCount);
+        if (result.getBotposeTagCount() < Constants.limelightMinimumTagCount) {
             return null;
         }
 
+        // getBotpose() is MegaTag1 and supplies an independent position and heading.
         return convertToPedroPose(result.getBotpose());
+    }
+
+    private Pose averagePoses(List<Pose> poses) {
+        double x = 0;
+        double y = 0;
+        double headingSin = 0;
+        double headingCos = 0;
+
+        for (Pose pose : poses) {
+            x += pose.getX();
+            y += pose.getY();
+            headingSin += Math.sin(pose.getHeading());
+            headingCos += Math.cos(pose.getHeading());
+        }
+
+        int count = poses.size();
+        return new Pose(
+                x / count,
+                y / count,
+                Math.atan2(headingSin / count, headingCos / count)
+        );
+    }
+
+    private void sleepBriefly() {
+        try {
+            Thread.sleep(10);
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     private boolean isReasonableReset(Pose currentPose, Pose cameraPose) {

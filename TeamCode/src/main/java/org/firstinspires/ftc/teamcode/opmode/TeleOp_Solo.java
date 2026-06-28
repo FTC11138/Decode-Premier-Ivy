@@ -53,6 +53,7 @@ public class TeleOp_Solo extends RobotOpMode {
     @Override
     public void start() {
         teleOpEnabled = false;
+        robot.spindexer.resetEncoderZero();
         llPoseResetter.start();
     }
 
