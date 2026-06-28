@@ -48,6 +48,11 @@ public class Constants {
     public static double limelightMaxResetHeadingDegrees = 25.0;
     public static int limelightMinimumTagCount = 1;
     public static boolean limelightAllowLargePoseReset = false;
+    public static int limelightPoseSampleCount = 10;
+    public static int limelightMinimumPoseSamples = 4;
+    public static long limelightPoseCollectionTimeoutMs = 350;
+    public static double limelightOutlierDistanceInches = 10.0;
+    public static double limelightMotionCommandThreshold = 0.05;
 
     /* -------------------------------------------- INTAKE CONSTANTS -------------------------------------------- */
     public static double intakeFastPower = -1;
@@ -56,7 +61,9 @@ public class Constants {
     public static double intakeSlowPowerYThreshold = 48;
     public static double intakeOffPower = 0;
     public static double intakeReversePower = 1;
-    public static double intakeShortReverseTimeMs = 150;
+    public static double intakeShortReverseTimeMs = 100;
+    public static double intakeStuckCurrentMilliamps = 4000;
+    public static long intakeStuckDetectionTimeMs = 250;
 
     public static double ballDetectThreshold = 0.3;
     public static int ballDetectWait = 170;
@@ -75,7 +82,7 @@ public class Constants {
     public static double shooterOverrideTarget = 1000;
     public static double shooterPowerSign = -1.0;
     public static boolean shooterTopReversed = false;
-    public static boolean shooterBottomReversed = false;
+    public static boolean shooterBottomReversed = true;
     public static boolean shooterTopEnabled = true;
     public static boolean shooterBottomEnabled = true;
 
@@ -92,10 +99,10 @@ public class Constants {
     public static int shootWait = 1800;
     public static double adjHoodMax = 0.02;
     public static double adjHoodMin = 0.48;
-    public static double shootVelFar = -650;
+    public static double shootVelFar = -1450;
 //    public static double shootVelClose = -1450;
 //    public static double shootVelTol = 25;
-    public static double shootHoodFar = 0.38;
+    public static double shootHoodFar = 0.55;
 //    public static double shootHoodClose = 0.38;
 //    public static double autoHood = 0.4;
 //    public static double autoVel = -1520;
@@ -103,15 +110,19 @@ public class Constants {
     public static double shooterHoodTolerance = 0.015;
 
     public static double spindexerTicksPerRevolution = 8192.0;
-    public static double spindexerDeadbandDegrees = 1.0;
+    public static double spindexerDeadbandDegrees = 2.0;
+    public static double spindexerHoldCorrectionDegrees = 5.0;
+    public static double spindexerApproachZoneDegrees = 8.0;
+    public static double spindexerApproachMaxPower = 0.06;
+    public static double spindexerApproachMinimumPower = 0.07;
     public static double spindexerMovePower = 0.95;
     public static double spindexerShootPower = 0.86;
     public static double spindexerHoldPower = 0.25;
-    public static double spindexerPositionKp = 0.00045;
+    public static double spindexerPositionKp = 0.00025;
     public static double spindexerPositionKi = 0.0;
-    public static double spindexerPositionKd = 0.00002;
+    public static double spindexerPositionKd = 0.0;
     public static double spindexerMaxIntegral = 1500.0;
-    public static double spindexerMinimumMovePower = 0.05;
+    public static double spindexerMinimumMovePower = 0.06;
     public static long spindexerMoveTimeoutMs = 3000;
     public static boolean spindexerEncoderReversed = false;
     public static boolean spindexerMotorReversed = false;
@@ -120,7 +131,6 @@ public class Constants {
     public static long spindexerAutoLoadDelayMs = 100;
     public static long shootSensorWait = 500;
     public static long shootSingleSensorWait = 350;
-    public static double stuckCurrent = 8.0;
     public static long spindexerUnstuckWaitMs = 750;
 //    public static double spindexer_kP = 0.005;
 //    public static double spindexer_kI = 0.000001;

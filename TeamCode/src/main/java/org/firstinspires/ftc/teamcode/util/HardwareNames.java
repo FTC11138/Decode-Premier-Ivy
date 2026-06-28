@@ -14,6 +14,8 @@ public class HardwareNames {
 
     public static String intake = "intake";
 
+    public static String intakeServo = "intakeServo";
+
     public static String flywheelTop = "flywheelTop";
     public static String flywheelBottom = "flywheelBottom";
     public static String adjustableHood = "adjHood";
