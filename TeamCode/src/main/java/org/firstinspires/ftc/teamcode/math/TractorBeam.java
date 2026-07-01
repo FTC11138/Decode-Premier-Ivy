@@ -16,7 +16,12 @@ public class TractorBeam {
     }
 
     public static double getTurretTargetDegrees(Pose currentPose, Telemetry telemetry, Alliance alliance) {
-        Pose turretPose = TurretLocation.getTurretPose(currentPose);
+        Pose turretOnlyCorrectedRobotPose = new Pose(
+                currentPose.getX() + Constants.turretPoseXCorrectionInches,
+                currentPose.getY(),
+                currentPose.getHeading()
+        );
+        Pose turretPose = TurretLocation.getTurretPose(turretOnlyCorrectedRobotPose);
         Pose goal = alliance.getGoal();
 
         double fieldTargetRadians = Math.atan2(
@@ -24,7 +29,11 @@ public class TractorBeam {
                 goal.getX() - turretPose.getX()
         );
         double fieldTargetDegrees = Math.toDegrees(fieldTargetRadians);
-        double turretTargetDegrees = AngleUnit.normalizeDegrees(fieldTargetDegrees - Math.toDegrees(turretPose.getHeading()));
+        double turretTargetDegrees = AngleUnit.normalizeDegrees(
+                fieldTargetDegrees
+                        - Math.toDegrees(turretPose.getHeading())
+                        + Constants.turretAimOffsetDegrees
+        );
 
         turretTargetDegrees = Range.clip(
                 turretTargetDegrees,
@@ -34,6 +43,8 @@ public class TractorBeam {
 
         telemetry.addData("Auto Aim Field Target", fieldTargetDegrees);
         telemetry.addData("Auto Aim Turret Target", turretTargetDegrees);
+        telemetry.addData("Auto Aim Offset", Constants.turretAimOffsetDegrees);
+        telemetry.addData("Auto Aim X Correction", Constants.turretPoseXCorrectionInches);
 
         return turretTargetDegrees;
     }

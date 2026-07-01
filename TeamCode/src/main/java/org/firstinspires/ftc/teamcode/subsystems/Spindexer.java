@@ -27,7 +27,6 @@ public class Spindexer {
     private final ElapsedTime timer = new ElapsedTime();
 
     private double targetPositionTicks = 0;
-    private double activePower = Constants.spindexerMovePower;
 
     private boolean ignoreUnstuck = false;
     private long lastUnstuckTime = 0;
@@ -38,6 +37,7 @@ public class Spindexer {
     private boolean ignoreSensor = false;
     private long sensorWait = Constants.sensorWait;
     private long lastDetectTime = 0;
+    private boolean ballDetectionLatched = false;
     private boolean autoLoadPending = false;
     private long autoLoadTime = 0;
     private int ballCount = 0;
@@ -77,7 +77,7 @@ public class Spindexer {
 
     public Command rotate360CW() {
         return instant(() -> {
-            moveRelative(-Constants.spindexerTicksPerRevolution, Constants.spindexerShootPower);
+            moveRelative(-Constants.spindexerTicksPerRevolution);
             ballCount = 0;
         }).requiring(spindexerMotor);
     }
@@ -86,37 +86,36 @@ public class Spindexer {
         return instant(() -> {
             intaking = false;
             shooting = true;
-            moveRelative(-(Constants.spindexerTicksPerRevolution + ticks120Degrees()), Constants.spindexerShootPower);
-            ignoreSensor(Constants.shootSensorWait);
+            moveRelative(-(Constants.spindexerTicksPerRevolution + ticks120Degrees()));
             ballCount = 0;
         }).requiring(spindexerMotor);
     }
 
     public Command rotateResetCW() {
         return instant(() -> {
-            moveRelative(ticks120Degrees() - 20, Constants.spindexerShootPower);
+            moveRelative(ticks120Degrees() - 20);
             ballCount = 0;
         }).requiring(spindexerMotor);
     }
 
     public Command rotate360CCW() {
-        return instant(() -> moveRelative(Constants.spindexerTicksPerRevolution, Constants.spindexerMovePower)).requiring(spindexerMotor);
+        return instant(() -> moveRelative(Constants.spindexerTicksPerRevolution)).requiring(spindexerMotor);
     }
 
     public Command rotate15CW() {
         return instant(() -> {
-            moveRelative(Constants.spindexerTicksPerRevolution / 15.0, Constants.spindexerMovePower);
+            moveRelative(Constants.spindexerTicksPerRevolution / 15.0);
             ballCount--;
         }).requiring(spindexerMotor);
     }
 
     public Command rotate120CCW() {
-        return instant(() -> moveRelative(ticks120Degrees(), Constants.spindexerMovePower)).requiring(spindexerMotor);
+        return instant(() -> moveRelative(ticks120Degrees())).requiring(spindexerMotor);
     }
 
     public Command rotate120CW() {
         return instant(() -> {
-            moveRelative(-ticks120Degrees(), Constants.spindexerMovePower);
+            moveRelative(-ticks120Degrees());
             ignoreSensor(Constants.shootSingleSensorWait);
             ballCount--;
         }).requiring(spindexerMotor);
@@ -141,10 +140,16 @@ public class Spindexer {
 
     public Command setIntaking(boolean intaking) {
         return instant(() -> {
+            if (intaking && shooting) {
+                ballDetectionLatched = false;
+                autoLoadPending = false;
+                ignoreSensor(Constants.postShootSensorWaitMs);
+            }
             this.intaking = intaking;
             this.shooting = false;
             intakeHighCurrentStartTime = -1;
             if (!intaking) {
+                ballDetectionLatched = false;
                 autoLoadPending = false;
                 jamIndexPending = false;
             }
@@ -185,9 +190,8 @@ public class Spindexer {
         return spindexerMotor.getCurrent(CurrentUnit.MILLIAMPS);
     }
 
-    private void moveRelative(double deltaTicks, double power) {
+    private void moveRelative(double deltaTicks) {
         targetPositionTicks += deltaTicks;
-        activePower = Math.abs(power);
         activeMove = true;
         targetSettled = false;
         resetPositionController();
@@ -207,11 +211,6 @@ public class Spindexer {
         return (Constants.spindexerDeadbandDegrees / 360.0) * Constants.spindexerTicksPerRevolution;
     }
 
-    private double approachZoneTicks() {
-        return (Constants.spindexerApproachZoneDegrees / 360.0)
-                * Constants.spindexerTicksPerRevolution;
-    }
-
     private double holdCorrectionTicks() {
         return (Constants.spindexerHoldCorrectionDegrees / 360.0)
                 * Constants.spindexerTicksPerRevolution;
@@ -227,11 +226,11 @@ public class Spindexer {
         resetPositionController();
     }
 
-    private void cancelMoveAndSnapAfterJam() {
-        activeMove = false;
-        snapTargetToNearestSlot();
-        spindexerMotor.setPower(0);
-        autoLoadPending = false;
+    private void restartPositionControllerAfterTimeout() {
+        activeMove = true;
+        targetSettled = false;
+        moveStartTime = timer.time(TimeUnit.MILLISECONDS);
+        resetPositionController();
     }
 
     private void resetPositionController() {
@@ -287,23 +286,9 @@ public class Spindexer {
                 error * Constants.spindexerPositionKp
                         + positionIntegral * Constants.spindexerPositionKi
                         + derivative * Constants.spindexerPositionKd,
-                -activePower,
-                activePower
+                -1.0,
+                1.0
         );
-
-        double minimumPower = Constants.spindexerMinimumMovePower;
-        if (Math.abs(error) <= approachZoneTicks()) {
-            minimumPower = Constants.spindexerApproachMinimumPower;
-            power = Range.clip(
-                    power,
-                    -Constants.spindexerApproachMaxPower,
-                    Constants.spindexerApproachMaxPower
-            );
-        }
-
-        if (Math.abs(power) < minimumPower) {
-            power = Math.signum(error) * minimumPower;
-        }
 
         if (Constants.spindexerMotorReversed) {
             power *= -1.0;
@@ -321,7 +306,7 @@ public class Spindexer {
         autoLoadPending = false;
         ballCount++;
         if (ballCount < 3) {
-            moveRelative(ticks120Degrees(), Constants.spindexerMovePower);
+            moveRelative(ticks120Degrees());
         } else {
             intaking = false;
         }
@@ -344,7 +329,7 @@ public class Spindexer {
             }
 
             if (moving && now - moveStartTime > Constants.spindexerMoveTimeoutMs) {
-                cancelMoveAndSnapAfterJam();
+                restartPositionControllerAfterTimeout();
             }
 
             wasMoving = moving;
@@ -352,7 +337,21 @@ public class Spindexer {
             canRotate = ranger.getState();
             ballDetected = canRotate;
 
-            if (ballDetected && !lastBallDetected && Constants.autoSpindex && intaking && !ignoreSensor && !moving) {
+            if (ballDetected
+                    && !lastBallDetected
+                    && Constants.autoSpindex
+                    && intaking
+                    && !ignoreSensor) {
+                ballDetectionLatched = true;
+            }
+
+            if (ballDetectionLatched
+                    && Constants.autoSpindex
+                    && intaking
+                    && !ignoreSensor
+                    && !moving
+                    && !autoLoadPending) {
+                ballDetectionLatched = false;
                 ignoreSensor(Constants.sensorWait);
                 autoLoadPending = true;
                 autoLoadTime = now + Constants.spindexerAutoLoadDelayMs;
@@ -388,11 +387,14 @@ public class Spindexer {
                 ignoreUnstuck = true;
                 lastUnstuckTime = now;
                 intakeHighCurrentStartTime = -1;
-                robot.intake.shortReverse().schedule();
 
-                if (!autoLoadPending && !jamIndexPending) {
+                if (!autoLoadPending && !jamIndexPending && !isMoving()) {
                     jamIndexPending = true;
-                    rotate120CCW().schedule();
+                    robot.intake.shortReverse()
+                            .then(rotate120CCW())
+                            .schedule();
+                } else {
+                    robot.intake.shortReverse().schedule();
                 }
             }
 
@@ -423,6 +425,7 @@ public class Spindexer {
             telemetry.addData("Spindexer Ranger Can Rotate", canRotate);
             telemetry.addData("Spindexer Ball Count", ballCount);
             telemetry.addData("Spindexer Ignore Sensor", ignoreSensor);
+            telemetry.addData("Spindexer Ball Detection Latched", ballDetectionLatched);
             telemetry.addData("Spindexer Auto Load Pending", autoLoadPending);
             telemetry.addData("Spindexer Intaking", intaking);
             telemetry.addData("Spindexer Shooting", shooting);

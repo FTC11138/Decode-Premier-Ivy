@@ -11,7 +11,7 @@ import static org.firstinspires.ftc.teamcode.math.PoseMirror.mirror;
 
 public class WaveLength {
     private static final double[] FAR_X = new double[]{43, 71, 100};
-    private static final double[] FAR_Y = new double[]{6, 27};
+    private static final double[] FAR_Y = new double[]{9, 27};
     private static final double[] CLOSE_X = new double[]{38, 61, 85};
     private static final double[] CLOSE_Y = new double[]{63, 88, 111, 130};
 

@@ -37,9 +37,6 @@ public class Drivetrain {
     private boolean fieldCentricEnabled = true;
     private double headingTargetRadians = 0;
     private double fieldCentricHeadingOffsetRadians = 0;
-    private double lastForwardCommand = 0;
-    private double lastStrafeCommand = 0;
-    private double lastTurnCommand = 0;
 
     public Drivetrain(Robot robot) {
         follower = createFollower(robot.hardwareMap);
@@ -113,10 +110,6 @@ public class Drivetrain {
     }
 
     private void drive(double forward, double strafe, double turn, boolean robotCentric, double headingOffsetRadians, double robotHeadingRadians) {
-        lastForwardCommand = forward;
-        lastStrafeCommand = strafe;
-        lastTurnCommand = turn;
-
         forward = signedSquare(forward);
         strafe = signedSquare(strafe);
 
@@ -134,12 +127,6 @@ public class Drivetrain {
                 robotCentric,
                 headingOffsetRadians
         );
-    }
-
-    public boolean isMotionCommanded(double threshold) {
-        return Math.abs(lastForwardCommand) > threshold
-                || Math.abs(lastStrafeCommand) > threshold
-                || Math.abs(lastTurnCommand) > threshold;
     }
 
     public Pose getPose() {

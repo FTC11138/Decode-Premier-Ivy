@@ -28,8 +28,8 @@ public class Constants {
     public static boolean rightFrontReversed = true;
     public static boolean rightRearReversed = false;
 
-    public static double forwardPodY = -36.65 / 25.4;
-    public static double strafePodX = -30.292 / 25.4;
+    public static double forwardPodY = 132.0 / 25.4;
+    public static double strafePodX = -24 / 25.4;
     public static boolean forwardEncoderReversed = true;
     public static boolean strafeEncoderReversed = false;
 

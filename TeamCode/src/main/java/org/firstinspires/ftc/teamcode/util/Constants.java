@@ -48,11 +48,6 @@ public class Constants {
     public static double limelightMaxResetHeadingDegrees = 25.0;
     public static int limelightMinimumTagCount = 1;
     public static boolean limelightAllowLargePoseReset = false;
-    public static int limelightPoseSampleCount = 10;
-    public static int limelightMinimumPoseSamples = 4;
-    public static long limelightPoseCollectionTimeoutMs = 350;
-    public static double limelightOutlierDistanceInches = 10.0;
-    public static double limelightMotionCommandThreshold = 0.05;
 
     /* -------------------------------------------- INTAKE CONSTANTS -------------------------------------------- */
     public static double intakeFastPower = -1;
@@ -61,7 +56,7 @@ public class Constants {
     public static double intakeSlowPowerYThreshold = 48;
     public static double intakeOffPower = 0;
     public static double intakeReversePower = 1;
-    public static double intakeShortReverseTimeMs = 100;
+    public static double intakeShortReverseTimeMs = 75;
     public static double intakeStuckCurrentMilliamps = 4000;
     public static long intakeStuckDetectionTimeMs = 250;
 
@@ -99,7 +94,7 @@ public class Constants {
     public static int shootWait = 1800;
     public static double adjHoodMax = 0.02;
     public static double adjHoodMin = 0.48;
-    public static double shootVelFar = -1450;
+    public static double shootVelFar = -500;
 //    public static double shootVelClose = -1450;
 //    public static double shootVelTol = 25;
     public static double shootHoodFar = 0.55;
@@ -111,25 +106,18 @@ public class Constants {
 
     public static double spindexerTicksPerRevolution = 8192.0;
     public static double spindexerDeadbandDegrees = 2.0;
-    public static double spindexerHoldCorrectionDegrees = 5.0;
-    public static double spindexerApproachZoneDegrees = 8.0;
-    public static double spindexerApproachMaxPower = 0.06;
-    public static double spindexerApproachMinimumPower = 0.07;
-    public static double spindexerMovePower = 0.95;
-    public static double spindexerShootPower = 0.86;
-    public static double spindexerHoldPower = 0.25;
-    public static double spindexerPositionKp = 0.00025;
-    public static double spindexerPositionKi = 0.0;
-    public static double spindexerPositionKd = 0.0;
+    public static double spindexerHoldCorrectionDegrees = 2.0;
+    public static double spindexerPositionKp = 0.00026;
+    public static double spindexerPositionKi = 0.0000005;
+    public static double spindexerPositionKd = 0.000013;
     public static double spindexerMaxIntegral = 1500.0;
-    public static double spindexerMinimumMovePower = 0.06;
     public static long spindexerMoveTimeoutMs = 3000;
     public static boolean spindexerEncoderReversed = false;
     public static boolean spindexerMotorReversed = false;
     public static boolean autoSpindex = true;
-    public static long sensorWait = 325;
-    public static long spindexerAutoLoadDelayMs = 100;
-    public static long shootSensorWait = 500;
+    public static long sensorWait = 200;
+    public static long spindexerAutoLoadDelayMs = 0;
+    public static long postShootSensorWaitMs = 300;
     public static long shootSingleSensorWait = 350;
     public static long spindexerUnstuckWaitMs = 750;
 //    public static double spindexer_kP = 0.005;
@@ -142,14 +130,15 @@ public class Constants {
     public static double turretEncoderRevolutionsPerTurretRevolution = 102.0 / 45.0;
     public static double turretTicksPerRevolution = turretEncoderTicksPerRevolution * turretEncoderRevolutionsPerTurretRevolution;
     public static double turretIncrementDegrees = 2.5;
+    public static double turretAimOffsetDegrees = 0;
     public static double turretHomedAngleDegrees = 0;
     public static double turretMinAngleDegrees = -90;
     public static double turretMaxAngleDegrees = 90;
 //    public static double turretMinServoPosition = 0.0;
 //    public static double turretMaxServoPosition = 1.0;
 //    public static double turretDisabledServoPosition = 0.0;
-    public static double turretForwardOffsetInches = 0;
-    public static double turretLeftOffsetInches = -2.19;
+    public static double turretForwardOffsetInches = -0.150234276094488;
+    public static double turretLeftOffsetInches = -2.17392353822834661;
 //    public static double turretMinimumAutoAimAngleDegrees = -90;
     public static boolean turretEncoderReversed = true;
     public static boolean turretServoReversed = true;
