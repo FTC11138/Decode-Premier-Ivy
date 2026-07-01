@@ -197,12 +197,12 @@ public class TeleOp_Solo extends RobotOpMode {
         gamepad1DpadDownWasDown = gamepad1.dpad_down;
 
         if (gamepad1.dpad_left && !gamepad1DpadLeftWasDown) {
-            robot.turret.moveLeft();
+            Constants.turretAimOffsetDegrees -= Constants.turretAimOffsetStepDegrees;
         }
         gamepad1DpadLeftWasDown = gamepad1.dpad_left;
 
         if (gamepad1.dpad_right && !gamepad1DpadRightWasDown) {
-            robot.turret.moveRight();
+            Constants.turretAimOffsetDegrees += Constants.turretAimOffsetStepDegrees;
         }
         gamepad1DpadRightWasDown = gamepad1.dpad_right;
 
@@ -215,11 +215,11 @@ public class TeleOp_Solo extends RobotOpMode {
         }
 
         if (gamepad2.dpadLeftWasPressed()) {
-            robot.turret.moveLeft();
+            Constants.turretAimOffsetDegrees -= Constants.turretAimOffsetStepDegrees;
         }
 
         if (gamepad2.dpadRightWasPressed()) {
-            robot.turret.moveRight();
+            Constants.turretAimOffsetDegrees += Constants.turretAimOffsetStepDegrees;
         }
 
         if (robot.spindexer.getBallCount() == 3) {
