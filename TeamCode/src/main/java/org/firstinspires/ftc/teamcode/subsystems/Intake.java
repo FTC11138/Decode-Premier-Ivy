@@ -15,12 +15,14 @@ public class Intake {
     private boolean slowMode = false;
     private Mode mode = Mode.OFF;
 
+    private final Robot robot;
     private final DcMotorEx intakeMotor;
 
     private final CRServo intakeServo;
     private final Telemetry telemetry;
 
     public Intake(Robot robot) {
+        this.robot = robot;
         intakeServo = robot.hardwareMap.get(CRServo.class, HardwareNames.intakeServo);
         intakeMotor = robot.hardwareMap.get(DcMotorEx.class, HardwareNames.intake);
         telemetry = robot.telemetry;
@@ -55,7 +57,7 @@ public class Intake {
         slowMode = true;
     }
 
-    public void speedUp() {
+    public void speedUp() {`
         slowMode = false;
     }
 
@@ -76,6 +78,14 @@ public class Intake {
                     break;
             }
 
+            // While the spindexer indexes counterclockwise (not the shooting
+            // direction), drive the intake servo forward to help feed balls.
+            boolean spindexerCounterClockwise = robot.spindexer.isSpinningCounterClockwise();
+            if (spindexerCounterClockwise) {
+                intakeServo.setPower(1);
+            }
+
+            telemetry.addData("Intake Servo Feed (Spindexer CCW)", spindexerCounterClockwise);
             telemetry.addData("Intake Current", intakeMotor.getCurrent(CurrentUnit.MILLIAMPS));
             telemetry.addData("Intake Velocity", intakeMotor.getVelocity());
         });

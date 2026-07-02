@@ -56,7 +56,7 @@ public class Constants {
     public static double intakeSlowPowerYThreshold = 48;
     public static double intakeOffPower = 0;
     public static double intakeReversePower = 1;
-    public static double intakeShortReverseTimeMs = 75;
+    public static double intakeShortReverseTimeMs = 40;
     public static double intakeStuckCurrentMilliamps = 4000;
     public static long intakeStuckDetectionTimeMs = 250;
 
@@ -72,7 +72,7 @@ public class Constants {
     public static double shooterKd = 0;
     public static double shooterKs = 0.065;
     public static double shooterKv = 0.000365;
-    public static int shooterVelocityTolerance = 25;
+    public static int shooterVelocityTolerance = 20;
     public static boolean shooterOverride = false;
     public static double shooterOverrideTarget = 1000;
     public static double shooterPowerSign = -1.0;
@@ -121,6 +121,19 @@ public class Constants {
     public static long postShootSensorWaitMs = 300;
     public static long shootSingleSensorWait = 350;
     public static long spindexerUnstuckWaitMs = 750;
+    // Safety net: if a ball stays detected this long with nothing queued and it
+    // is safe to act, force a load so a ball never sits unhandled.
+    public static long spindexerBallRecoveryMs = 400;
+
+    /* -------------------------------------------- LED CONSTANTS -------------------------------------------- */
+    // RGB indicator lights driven as PWM servos. Positions are the FTC 0-1
+    // values from the Base10 3118-0808-0002 color chart.
+    public static double ledOff = 0.0;     // 500us  - off
+    public static double ledRed = 0.277;   // 1100us - red
+    public static double ledOrange = 0.333;// 1200us - orange
+    public static double ledGreen = 0.500; // 1500us - green
+    public static double ledBlue = 0.611;  // 1700us - blue
+    public static double ledPurple = 0.722;// 1900us - violet/purple
 //    public static double spindexer_kP = 0.005;
 //    public static double spindexer_kI = 0.000001;
 //    public static double spindexer_kD = 0.0001;

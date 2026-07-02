@@ -16,6 +16,7 @@ public class Robot {
     public final Shooter shooter;
     public final Turret turret;
     public final Spindexer spindexer;
+    public final Leds leds;
 
     public Robot(OpMode opMode) {
         hardwareMap = opMode.hardwareMap;
@@ -30,5 +31,6 @@ public class Robot {
         shooter = new Shooter(this);
         turret = new Turret(this);
         spindexer = new Spindexer(this);
+        leds = new Leds(this);
     }
 }

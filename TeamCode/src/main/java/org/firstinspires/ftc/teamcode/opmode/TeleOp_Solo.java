@@ -177,9 +177,8 @@ public class TeleOp_Solo extends RobotOpMode {
             gamepad2.rumble(500);
         }
 
-        if (gamepad2.dpadUpWasPressed()) {
-            turretOffsetControlUnlocked = !turretOffsetControlUnlocked;
-        }
+        // Hold DPad Up to unlock right-joystick turret offset control.
+        turretOffsetControlUnlocked = gamepad2.dpad_up;
 
         updateTurretOffsetFromJoystick();
 

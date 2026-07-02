@@ -32,7 +32,6 @@ public class Spindexer {
     private long lastUnstuckTime = 0;
 
     private boolean canRotate = false;
-    private boolean lastBallDetected = false;
     private boolean ballDetected = false;
     private boolean ignoreSensor = false;
     private long sensorWait = Constants.sensorWait;
@@ -40,6 +39,7 @@ public class Spindexer {
     private boolean ballDetectionLatched = false;
     private boolean autoLoadPending = false;
     private long autoLoadTime = 0;
+    private long ballIdleSince = -1;
     private int ballCount = 0;
 
     private boolean intaking = false;
@@ -195,6 +195,15 @@ public class Spindexer {
                 && Math.abs(targetPositionTicks - getCurrentPosition()) > deadbandTicks();
     }
 
+    /**
+     * True while the spindexer is actively driving counterclockwise - the
+     * indexing/intake direction (positive target), not the shooting direction
+     * (which rotates clockwise / negative).
+     */
+    public boolean isSpinningCounterClockwise() {
+        return isMoving() && targetPositionTicks - getCurrentPosition() > 0;
+    }
+
     public int getCurrentPosition() {
         int direction = Constants.spindexerEncoderReversed ? -1 : 1;
         return direction * (spindexerEncoder.getCurrentPosition() - encoderZeroTicks);
@@ -210,10 +219,13 @@ public class Spindexer {
 
     public boolean canAcceptManualRotation(long lockoutMs) {
         if (lastMoveCommandTimeMs == Long.MIN_VALUE) {
-            return !isMoving();
+            return true;
         }
+        // Lock out purely on time since the last commanded rotation. Do not gate
+        // on isMoving(): the position controller's small hold corrections would
+        // otherwise keep this false and block every manual index.
         long elapsed = System.currentTimeMillis() - lastMoveCommandTimeMs;
-        return !isMoving() && elapsed >= lockoutMs;
+        return elapsed >= lockoutMs;
     }
 
     public void resetEncoderZero() {
@@ -353,6 +365,13 @@ public class Spindexer {
         spindexerMotor.setPower(power);
     }
 
+    private void queueAutoLoad(long now) {
+        ballDetectionLatched = false;
+        ignoreSensor(Constants.sensorWait);
+        autoLoadPending = true;
+        autoLoadTime = now + Constants.spindexerAutoLoadDelayMs;
+    }
+
     private void autoLoadBall() {
         if (!autoLoadPending || !intaking || shooting || isMoving()) {
             return;
@@ -374,15 +393,11 @@ public class Spindexer {
             updateMotorPower();
 
             boolean moving = isMoving();
-            if (moving) {
-                lastMoveCommandTimeMs = System.currentTimeMillis();
-            }
             if (moving && !wasMoving) {
                 moveStartTime = now;
             }
 
             if (!moving && wasMoving) {
-                lastBallDetected = ballDetected;
                 jamIndexPending = false;
             }
 
@@ -395,8 +410,12 @@ public class Spindexer {
             canRotate = ranger.getState();
             ballDetected = canRotate;
 
+            // Level-triggered: while a ball is seated on the sensor and we are
+            // clear to act, keep the load latched. The ignoreSensor debounce plus
+            // autoLoadPending guard below prevent re-triggering on the same ball,
+            // so a ball that first appears during an ignore/move window is still
+            // caught once that window clears (instead of losing the rising edge).
             if (ballDetected
-                    && !lastBallDetected
                     && Constants.autoSpindex
                     && intaking
                     && !ignoreSensor) {
@@ -409,10 +428,32 @@ public class Spindexer {
                     && !ignoreSensor
                     && !moving
                     && !autoLoadPending) {
-                ballDetectionLatched = false;
-                ignoreSensor(Constants.sensorWait);
-                autoLoadPending = true;
-                autoLoadTime = now + Constants.spindexerAutoLoadDelayMs;
+                queueAutoLoad(now);
+            }
+
+            // Recovery safety net: if a ball is detected and it is safe to act
+            // (intaking, settled, nothing already queued) but no load has been
+            // queued for a while, force one so a detected ball never sits
+            // unhandled. Under normal operation the latch above queues a load
+            // within a loop or two, which resets this timer before it fires.
+            boolean recoveryEligible = ballDetected
+                    && Constants.autoSpindex
+                    && intaking
+                    && !shooting
+                    && !ignoreSensor
+                    && !moving
+                    && !autoLoadPending
+                    && !jamIndexPending
+                    && ballCount < 3;
+            if (recoveryEligible) {
+                if (ballIdleSince < 0) {
+                    ballIdleSince = now;
+                } else if (now - ballIdleSince >= Constants.spindexerBallRecoveryMs) {
+                    ballIdleSince = -1;
+                    queueAutoLoad(now);
+                }
+            } else {
+                ballIdleSince = -1;
             }
 
             if (autoLoadPending && now >= autoLoadTime && !moving) {
@@ -446,7 +487,7 @@ public class Spindexer {
                 lastUnstuckTime = now;
                 intakeHighCurrentStartTime = -1;
 
-                if (!autoLoadPending && !jamIndexPending && !isMoving()) {
+                if (!jamIndexPending) {
                     jamIndexPending = true;
                     robot.intake.shortReverse()
                             .then(rotate120CCW())
@@ -464,8 +505,6 @@ public class Spindexer {
             if (now - lastDetectTime >= sensorWait) {
                 ignoreSensor = false;
             }
-
-            lastBallDetected = ballDetected;
 
             telemetry.addData("Spindexer Position", getCurrentPosition());
             telemetry.addData("Spindexer Raw Encoder", spindexerEncoder.getCurrentPosition());
@@ -487,6 +526,8 @@ public class Spindexer {
             telemetry.addData("Spindexer Ignore Sensor", ignoreSensor);
             telemetry.addData("Spindexer Ball Detection Latched", ballDetectionLatched);
             telemetry.addData("Spindexer Auto Load Pending", autoLoadPending);
+            telemetry.addData("Spindexer Ball Idle Time",
+                    ballIdleSince < 0 ? 0 : now - ballIdleSince);
             telemetry.addData("Spindexer Intaking", intaking);
             telemetry.addData("Spindexer Shooting", shooting);
         });

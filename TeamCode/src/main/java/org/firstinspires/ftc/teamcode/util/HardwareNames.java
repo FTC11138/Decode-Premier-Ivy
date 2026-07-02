@@ -27,6 +27,9 @@ public class HardwareNames {
     public static String spindexerEncoder = "backLeft"; //Control Hub Port 3
     public static String ranger = "ranger";
 
+    public static String led1 = "led1";
+    public static String led2 = "led2";
+
     private HardwareNames() {
     }
 }
