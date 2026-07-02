@@ -51,6 +51,8 @@ public class Spindexer {
     private boolean targetSettled = false;
     private boolean wasMoving = false;
     private long moveStartTime = 0;
+    private long lastMoveCommandTimeMs = Long.MIN_VALUE;
+    private double manualOffsetTicks = 0;
     private int encoderZeroTicks = 0;
     private double positionIntegral = 0;
     private double lastPositionError = 0;
@@ -110,12 +112,43 @@ public class Spindexer {
     }
 
     public Command rotate120CCW() {
-        return instant(() -> moveRelative(ticks120Degrees())).requiring(spindexerMotor);
+        return instant(() -> moveOne120DegreeSlot(1)).requiring(spindexerMotor);
+    }
+
+    public Command rotate120CCWAndIncrementCount() {
+        return instant(() -> {
+            moveOne120DegreeSlot(1);
+            ballCount++;
+        }).requiring(spindexerMotor);
+    }
+
+    public Command rotate120CCWAndResetCount() {
+        return instant(() -> {
+            moveOne120DegreeSlot(1);
+            ballCount = 0;
+        }).requiring(spindexerMotor);
+    }
+
+    public Command nudgeDegrees(double degrees) {
+        return instant(() -> {
+            double ticks = degrees / 360.0 * Constants.spindexerTicksPerRevolution;
+            manualOffsetTicks += ticks;
+            moveRelative(ticks);
+        }).requiring(spindexerMotor);
+    }
+
+    public Command resetManualOffset() {
+        return instant(() -> {
+            if (Math.abs(manualOffsetTicks) > 1e-6) {
+                moveRelative(-manualOffsetTicks);
+            }
+            manualOffsetTicks = 0;
+        }).requiring(spindexerMotor);
     }
 
     public Command rotate120CW() {
         return instant(() -> {
-            moveRelative(-ticks120Degrees());
+            moveOne120DegreeSlot(-1);
             ignoreSensor(Constants.shootSingleSensorWait);
             ballCount--;
         }).requiring(spindexerMotor);
@@ -175,10 +208,19 @@ public class Spindexer {
         return ballCount;
     }
 
+    public boolean canAcceptManualRotation(long lockoutMs) {
+        if (lastMoveCommandTimeMs == Long.MIN_VALUE) {
+            return !isMoving();
+        }
+        long elapsed = System.currentTimeMillis() - lastMoveCommandTimeMs;
+        return !isMoving() && elapsed >= lockoutMs;
+    }
+
     public void resetEncoderZero() {
         spindexerMotor.setPower(0);
         encoderZeroTicks = spindexerEncoder.getCurrentPosition();
         targetPositionTicks = 0;
+        manualOffsetTicks = 0;
         activeMove = false;
         targetSettled = false;
         autoLoadPending = false;
@@ -192,6 +234,19 @@ public class Spindexer {
 
     private void moveRelative(double deltaTicks) {
         targetPositionTicks += deltaTicks;
+        lastMoveCommandTimeMs = System.currentTimeMillis();
+        activeMove = true;
+        targetSettled = false;
+        resetPositionController();
+    }
+
+    private void moveOne120DegreeSlot(int direction) {
+        double slotTicks = ticks120Degrees();
+        double positionWithoutOffset = getCurrentPosition() - manualOffsetTicks;
+        long nearestSlot = Math.round(positionWithoutOffset / slotTicks);
+        targetPositionTicks =
+                (nearestSlot + direction) * slotTicks + manualOffsetTicks;
+        lastMoveCommandTimeMs = System.currentTimeMillis();
         activeMove = true;
         targetSettled = false;
         resetPositionController();
@@ -306,7 +361,7 @@ public class Spindexer {
         autoLoadPending = false;
         ballCount++;
         if (ballCount < 3) {
-            moveRelative(ticks120Degrees());
+            moveOne120DegreeSlot(1);
         } else {
             intaking = false;
         }
@@ -319,6 +374,9 @@ public class Spindexer {
             updateMotorPower();
 
             boolean moving = isMoving();
+            if (moving) {
+                lastMoveCommandTimeMs = System.currentTimeMillis();
+            }
             if (moving && !wasMoving) {
                 moveStartTime = now;
             }
@@ -424,6 +482,8 @@ public class Spindexer {
                     intakeHighCurrentStartTime < 0 ? 0 : now - intakeHighCurrentStartTime);
             telemetry.addData("Spindexer Ranger Can Rotate", canRotate);
             telemetry.addData("Spindexer Ball Count", ballCount);
+            telemetry.addData("Spindexer Offset Degrees",
+                    manualOffsetTicks / Constants.spindexerTicksPerRevolution * 360.0);
             telemetry.addData("Spindexer Ignore Sensor", ignoreSensor);
             telemetry.addData("Spindexer Ball Detection Latched", ballDetectionLatched);
             telemetry.addData("Spindexer Auto Load Pending", autoLoadPending);

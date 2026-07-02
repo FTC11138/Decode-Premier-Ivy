@@ -24,6 +24,8 @@ public class Shooter {
     private final Drivetrain drivetrain;
     private boolean tempOverride = false;
     private boolean hoodOverride = false;
+    private boolean closeInterpolationOnly = false;
+    private boolean farInterpolationOnly = false;
     private boolean on = false;
     private double target = 0;
     private double hoodTarget = Constants.adjHoodMin;
@@ -58,15 +60,33 @@ public class Shooter {
     public void setTarget(double target) {
         this.target = Math.abs(target);
         tempOverride = true;
+        closeInterpolationOnly = false;
+        farInterpolationOnly = false;
     }
 
     public void useInterpolation() {
         tempOverride = false;
         hoodOverride = false;
+        closeInterpolationOnly = false;
+        farInterpolationOnly = false;
+    }
+
+    public void useCloseInterpolation() {
+        tempOverride = false;
+        hoodOverride = false;
+        closeInterpolationOnly = true;
+        farInterpolationOnly = false;
+    }
+
+    public void useFarInterpolation() {
+        tempOverride = false;
+        hoodOverride = false;
+        closeInterpolationOnly = false;
+        farInterpolationOnly = true;
     }
 
     public void setHoodPosition(double hoodPosition) {
-        hoodTarget = Range.clip(hoodPosition, Constants.adjHoodMax, Constants.adjHoodMin);
+        hoodTarget = Range.clip(hoodPosition, Constants.adjHoodMax, Constants.adjHoodServoMax);
         hoodOverride = true;
     }
 
@@ -148,8 +168,22 @@ public class Shooter {
             applyMotorDirections();
 
             if (on) {
-                target = Constants.shooterOverride ? Math.abs(Constants.shooterOverrideTarget) : (tempOverride ? target : WaveLength.getVelocityWithInterpolation(turretPose, Alliance.current));
-                hoodTarget = hoodOverride ? hoodTarget : WaveLength.getHoodWithInterpolation(turretPose, Alliance.current);
+                target = Constants.shooterOverride
+                        ? Math.abs(Constants.shooterOverrideTarget)
+                        : (tempOverride
+                        ? target
+                        : (closeInterpolationOnly
+                        ? WaveLength.getCloseVelocityWithInterpolation(turretPose, Alliance.current)
+                        : (farInterpolationOnly
+                        ? WaveLength.getFarVelocityWithInterpolation(turretPose, Alliance.current)
+                        : WaveLength.getVelocityWithInterpolation(turretPose, Alliance.current))));
+                hoodTarget = hoodOverride
+                        ? hoodTarget
+                        : (closeInterpolationOnly
+                        ? WaveLength.getCloseHoodWithInterpolation(turretPose, Alliance.current)
+                        : (farInterpolationOnly
+                        ? WaveLength.getFarHoodWithInterpolation(turretPose, Alliance.current)
+                        : WaveLength.getHoodWithInterpolation(turretPose, Alliance.current)));
                 double pidPower = flywheelPIDF(
                         target,
                         getVelocity(),
@@ -166,7 +200,11 @@ public class Shooter {
                 setPower(0);
             }
 
-            adjustableHood.setPosition(Range.clip(hoodTarget, Constants.adjHoodMax, Constants.adjHoodMin));
+            adjustableHood.setPosition(Range.clip(
+                    hoodTarget,
+                    Constants.adjHoodMax,
+                    Constants.adjHoodServoMax
+            ));
 
             telemetry.addData("Shooter Distance", goalDistance);
             telemetry.addData("Shooter On", on);
@@ -178,6 +216,8 @@ public class Shooter {
             telemetry.addData("Flywheel Bottom Power", flywheelMotorBottom.getPower());
             telemetry.addData("Hood Target", hoodTarget);
             telemetry.addData("Hood Position", adjustableHood.getPosition());
+            telemetry.addData("Close Interpolation Only", closeInterpolationOnly);
+            telemetry.addData("Far Interpolation Only", farInterpolationOnly);
         });
     }
 }

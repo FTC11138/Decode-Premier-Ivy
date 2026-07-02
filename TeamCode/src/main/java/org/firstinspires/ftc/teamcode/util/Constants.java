@@ -92,8 +92,9 @@ public class Constants {
     public static double kF = 32767 / 2800.0;
     public static int shootBetweenWait = 300;
     public static int shootWait = 1800;
-    public static double adjHoodMax = 0.02;
+    public static double adjHoodMax = 0.0;
     public static double adjHoodMin = 0.48;
+    public static double adjHoodServoMax = 0.81;
     public static double shootVelFar = -500;
 //    public static double shootVelClose = -1450;
 //    public static double shootVelTol = 25;
@@ -131,6 +132,11 @@ public class Constants {
     public static double turretTicksPerRevolution = turretEncoderTicksPerRevolution * turretEncoderRevolutionsPerTurretRevolution;
     public static double turretIncrementDegrees = 2.5;
     public static double turretAimOffsetDegrees = 0;
+    public static double turretAimOffsetStepDegrees = 1.0;
+    public static double turretJoystickOffsetRateDegreesPerSecond = 45.0;
+    public static double turretJoystickDeadband = 0.1;
+    public static double turretMaximumAimOffsetDegrees = 45.0;
+    public static double turretPoseXCorrectionInches = 0.0;
     public static double turretHomedAngleDegrees = 0;
     public static double turretMinAngleDegrees = -90;
     public static double turretMaxAngleDegrees = 90;

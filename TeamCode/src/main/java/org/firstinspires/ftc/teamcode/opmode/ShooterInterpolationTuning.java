@@ -16,9 +16,9 @@ import org.firstinspires.ftc.teamcode.util.Constants;
 @TeleOp(name = "Shooter Interpolation Tuning", group = "Tuning")
 public class ShooterInterpolationTuning extends RobotOpMode {
     private static final double[] FAR_X = new double[]{43, 71, 100};
-    private static final double[] FAR_Y = new double[]{6, 27};
-    private static final double[] CLOSE_X = new double[]{38, 61, 85};
-    private static final double[] CLOSE_Y = new double[]{63, 88, 111, 135.5};
+    private static final double[] FAR_Y = new double[]{9, 27};
+    private static final double[] CLOSE_X = new double[]{50, 71, 85};
+    private static final double[] CLOSE_Y = new double[]{63, 88, 111, 130};
     private static final double FIELD_WIDTH = 141.5;
 
     public static double tuningVelocity = 1500;
@@ -235,7 +235,7 @@ public class ShooterInterpolationTuning extends RobotOpMode {
     }
 
     private double clipHood(double hood) {
-        return Math.max(Constants.adjHoodMax, Math.min(Constants.adjHoodMin, hood));
+        return Math.max(Constants.adjHoodMax, Math.min(Constants.adjHoodServoMax, hood));
     }
 
     private String getPointName(int index) {
@@ -243,7 +243,7 @@ public class ShooterInterpolationTuning extends RobotOpMode {
     }
 
     private int getTableIndex(int displayIndex) {
-        if (Alliance.current != Alliance.BLUE) {
+        if (Alliance.current == Alliance.BLUE) {
             return displayIndex;
         }
 
@@ -261,7 +261,7 @@ public class ShooterInterpolationTuning extends RobotOpMode {
 
     private double getDrivePointX(int displayIndex) {
         double tableX = getTablePointX(getTableIndex(displayIndex));
-        return Alliance.current == Alliance.BLUE ? FIELD_WIDTH - tableX : tableX;
+        return Alliance.current == Alliance.BLUE ? tableX : FIELD_WIDTH - tableX;
     }
 
     private double getTablePointX(int tableIndex) {
