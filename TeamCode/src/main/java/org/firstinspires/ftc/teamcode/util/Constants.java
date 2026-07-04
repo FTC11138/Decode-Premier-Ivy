@@ -56,9 +56,24 @@ public class Constants {
     public static double intakeSlowPowerYThreshold = 48;
     public static double intakeOffPower = 0;
     public static double intakeReversePower = 1;
-    public static double intakeShortReverseTimeMs = 40;
+    public static double intakeShortReverseTimeMs = 20;
+    // After the spindexer finishes a counterclockwise turn, the feed servo keeps
+    // running with it this much longer (unless the intake is running, the
+    // spindexer turns clockwise, or it is shooting - those supersede this coast).
+    public static long intakeServoCcwCoastMs = 300;
+    // When the spindexer fills to 3: wait, then reverse to spit the extra ball,
+    // then the intake shuts off until toggled or the count drops below 3.
+    public static long intakeFullEjectDelayMs = 400;
+    public static long intakeFullEjectReverseMs = 500;
     public static double intakeStuckCurrentMilliamps = 4000;
+    // Hysteresis release: once the stuck timer starts, it keeps counting until
+    // current drops below this, so noise near the trigger doesn't reset it.
+    public static double intakeStuckReleaseMilliamps = 3000;
     public static long intakeStuckDetectionTimeMs = 250;
+    // A "hard jam" - current stays high this long even while the auto-index path
+    // looks busy (ball at sensor / spindexer stuck mid-move) - forces a reverse
+    // and index anyway, since the normal path clearly isn't clearing the ball.
+    public static long intakeHardJamTimeMs = 900;
 
     public static double ballDetectThreshold = 0.3;
     public static int ballDetectWait = 170;
@@ -111,6 +126,11 @@ public class Constants {
     public static double spindexerPositionKp = 0.00026;
     public static double spindexerPositionKi = 0.0000005;
     public static double spindexerPositionKd = 0.000013;
+    // Static feedforward: constant push (in the direction of travel) added on top
+    // of the PID while moving, to break past the mechanical detent/resistance on
+    // every turn. Applied only while |error| > deadband, so it never fights the
+    // hold at rest. Tune up if it still stalls short, down if it overshoots/jitters.
+    public static double spindexerFeedforward = 0.08;
     public static double spindexerMaxIntegral = 1500.0;
     public static long spindexerMoveTimeoutMs = 3000;
     public static boolean spindexerEncoderReversed = false;
@@ -118,9 +138,19 @@ public class Constants {
     public static boolean autoSpindex = true;
     public static long sensorWait = 200;
     public static long spindexerAutoLoadDelayMs = 0;
+    // Minimum time between spindexer rotations: a manual index is rejected if a
+    // rotation happened within this window, and the auto-index also waits this
+    // long after any rotation before spinning again.
+    public static long spindexerRotationLockoutMs = 500;
     public static long postShootSensorWaitMs = 300;
     public static long shootSingleSensorWait = 350;
     public static long spindexerUnstuckWaitMs = 750;
+    // Spindexer strained mid-CCW-turn: if the spindexer motor draws more than this
+    // while turning counterclockwise, a ball is wedging it, so reverse the intake
+    // to relieve it. The sustain time avoids firing on the normal acceleration
+    // current spike (raise it if normal turns trip it, lower for faster reaction).
+    public static double spindexerStuckCurrentMilliamps = 3000;
+    public static long spindexerStuckDetectionTimeMs = 200;
     // Safety net: if a ball stays detected this long with nothing queued and it
     // is safe to act, force a load so a ball never sits unhandled.
     public static long spindexerBallRecoveryMs = 400;
@@ -129,7 +159,7 @@ public class Constants {
     // RGB indicator lights driven as PWM servos. Positions are the FTC 0-1
     // values from the Base10 3118-0808-0002 color chart.
     public static double ledOff = 0.0;     // 500us  - off
-    public static double ledRed = 0.277;   // 1100us - red
+    public static double ledRed = 0.28;    // ~1104us - true red (chart red is 1100us; higher drifts orange)
     public static double ledOrange = 0.333;// 1200us - orange
     public static double ledGreen = 0.500; // 1500us - green
     public static double ledBlue = 0.611;  // 1700us - blue
@@ -147,7 +177,11 @@ public class Constants {
     public static double turretAimOffsetDegrees = 0;
     public static double turretAimOffsetStepDegrees = 1.0;
     public static double turretJoystickOffsetRateDegreesPerSecond = 45.0;
-    public static double turretJoystickDeadband = 0.1;
+    // Small deadband while adjusting so tiny stick moves still register.
+    public static double turretJoystickDeadband = 0.02;
+    // Expo curve on the stick: >1 makes small deflections nudge slowly and large
+    // deflections turn fast (2 = squared response). 1.0 would be linear.
+    public static double turretJoystickExponent = 1.5;
     public static double turretMaximumAimOffsetDegrees = 45.0;
     public static double turretPoseXCorrectionInches = 0.0;
     public static double turretHomedAngleDegrees = 0;

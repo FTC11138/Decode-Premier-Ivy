@@ -11,6 +11,7 @@ import org.firstinspires.ftc.teamcode.robot.RobotOpMode;
 import org.firstinspires.ftc.teamcode.util.Constants;
 
 import static com.pedropathing.ivy.commands.Commands.instant;
+import static com.pedropathing.ivy.commands.Commands.waitMs;
 import static com.pedropathing.ivy.commands.Commands.waitUntil;
 
 @TeleOp(name = "TeleOp", group = "Competition")
@@ -23,6 +24,9 @@ public class TeleOp_Solo extends RobotOpMode {
     private boolean teleOpEnabled = false;
     private boolean intakeEnabled = false;
     private boolean turretOffsetControlUnlocked = false;
+    private boolean spindexerWasFull = false;
+    private boolean shooterFarZone = false;
+    private boolean readyToShootWasReady = false;
 
     private boolean gamepad1StartWasDown = false;
     private boolean gamepad1TouchpadWasDown = false;
@@ -31,6 +35,8 @@ public class TeleOp_Solo extends RobotOpMode {
     private boolean gamepad2LeftTriggerWasDown = false;
     private boolean gamepad2RightTriggerWasDown = false;
     private boolean gamepad2TouchpadWasDown = false;
+    private boolean gatePoseComboWasDown = false;
+    private boolean humanPlayerComboWasDown = false;
     private long lastLoopNanos = System.nanoTime();
 
     @Override
@@ -120,6 +126,13 @@ public class TeleOp_Solo extends RobotOpMode {
         if (gamepad1.rightBumperWasPressed()) {
             scheduleShoot();
         }
+
+        // Fixed-shot test: spin up at 500 tps with the hood fully out (0.81).
+        if (gamepad1.crossWasPressed()) {
+            robot.shooter.setTarget(500);
+            robot.shooter.setHoodPosition(0.81);
+            robot.shooter.turnOn();
+        }
     }
 
     private void runOperatorControls() {
@@ -129,6 +142,9 @@ public class TeleOp_Solo extends RobotOpMode {
                     .then(robot.spindexer.setIntaking(false))
                     .schedule();
         } else if (!leftTrigger && gamepad2LeftTriggerWasDown) {
+            // Releasing a hold-to-reverse always leaves the intake spinning inwards
+            // (even if it was stopped before). Left bumper still toggles it off.
+            intakeEnabled = true;
             restoreIntakeState();
         }
         gamepad2LeftTriggerWasDown = leftTrigger;
@@ -148,10 +164,15 @@ public class TeleOp_Solo extends RobotOpMode {
         gamepad2RightTriggerWasDown = rightTrigger;
 
         if (gamepad2.rightBumperWasPressed()) {
-            robot.spindexer.rotate120CCWAndResetCount().schedule();
+            if (robot.spindexer.canAcceptManualRotation(MANUAL_INDEX_LOCKOUT_MS)) {
+                robot.spindexer.rotate120CCWAndResetCount().schedule();
+            } else {
+                gamepad2.rumble(300);
+            }
         }
 
         if (gamepad2.circleWasPressed()) {
+            shooterFarZone = true;
             instant(() -> {
                 robot.shooter.useFarInterpolation();
                 robot.shooter.turnOn();
@@ -160,6 +181,7 @@ public class TeleOp_Solo extends RobotOpMode {
         }
 
         if (gamepad2.triangleWasPressed()) {
+            shooterFarZone = false;
             instant(() -> {
                 robot.shooter.useCloseInterpolation();
                 robot.shooter.turnOn();
@@ -167,17 +189,25 @@ public class TeleOp_Solo extends RobotOpMode {
             }).schedule();
         }
 
-        if (gamepad2.crossWasPressed()) {
+        // Relocalize to the gate (y=80) only when Square AND X are held together,
+        // so it can't be triggered by an accidental single press.
+        boolean gatePoseCombo = gamepad2.square && gamepad2.cross;
+        if (gatePoseCombo && !gatePoseComboWasDown) {
             setGatePose();
             gamepad2.rumble(500);
         }
+        gatePoseComboWasDown = gatePoseCombo;
 
-        if (gamepad2.squareWasPressed()) {
+        // Relocalize to the human-player position (y=6) only when DPad Left AND
+        // DPad Down are held together (a rare combination).
+        boolean humanPlayerCombo = gamepad2.dpad_left && gamepad2.dpad_down;
+        if (humanPlayerCombo && !humanPlayerComboWasDown) {
             setHumanPlayerPose();
             gamepad2.rumble(500);
         }
+        humanPlayerComboWasDown = humanPlayerCombo;
 
-        // Hold DPad Up to unlock right-joystick turret offset control.
+        // Hold DPad Up to unlock left-joystick turret offset control.
         turretOffsetControlUnlocked = gamepad2.dpad_up;
 
         updateTurretOffsetFromJoystick();
@@ -186,30 +216,56 @@ public class TeleOp_Solo extends RobotOpMode {
             Constants.turretAimOffsetDegrees = 0;
         }
 
-        if (gamepad2.dpadLeftWasPressed()) {
-            robot.spindexer.nudgeDegrees(-5).schedule();
-        }
-
-        if (gamepad2.dpadRightWasPressed()) {
-            robot.spindexer.nudgeDegrees(5).schedule();
-        }
-
-        if (gamepad2.dpadDownWasPressed()) {
-            robot.spindexer.resetManualOffset().schedule();
-        }
-
         if (gamepad2.leftStickButtonWasPressed()) {
             if (robot.shooter.isOn()) {
+                // Off: shooter stops and the hood drops to the bottom.
                 robot.shooter.turnOff();
             } else {
-                robot.shooter.useCloseInterpolation();
+                // On: resume whichever interpolation zone was last selected.
+                if (shooterFarZone) {
+                    robot.shooter.useFarInterpolation();
+                } else {
+                    robot.shooter.useCloseInterpolation();
+                }
                 robot.shooter.turnOn();
             }
         }
 
-        if (robot.spindexer.getBallCount() == 3) {
-            gamepad2.rumble(100);
+        handleSpindexerFull();
+        handleReadyToShootRumble();
+    }
+
+    private void handleReadyToShootRumble() {
+        boolean readyToShoot = robot.spindexer.getBallCount() >= 3 && robot.shooter.atTarget();
+        if (readyToShoot && !readyToShootWasReady) {
+            gamepad2.rumble(400);
         }
+        readyToShootWasReady = readyToShoot;
+    }
+
+    private void handleSpindexerFull() {
+        boolean full = robot.spindexer.getBallCount() >= 3;
+
+        if (full && !spindexerWasFull) {
+            // Just filled to 3: warn, hold the intake off, then wait -> reverse to
+            // spit the extra ball -> stop. It stays off (intakeEnabled = false)
+            // until the driver toggles it or the count drops back below 3.
+            gamepad2.rumble(400);
+            intakeEnabled = false;
+            waitMs(Constants.intakeFullEjectDelayMs)
+                    .then(robot.intake.reverse(), robot.spindexer.setIntaking(false))
+                    .then(waitMs(Constants.intakeFullEjectReverseMs))
+                    .then(robot.intake.off())
+                    .schedule();
+        } else if (!full && spindexerWasFull && !robot.spindexer.isShooting()) {
+            // Dropped below 3 outside of a shot (e.g. manual decrement): resume
+            // intaking. During a shot the shoot sequence turns the intake back on
+            // itself, so we leave it alone to avoid interrupting the rotation.
+            intakeEnabled = true;
+            restoreIntakeState();
+        }
+
+        spindexerWasFull = full;
     }
 
     private void scheduleShoot() {
@@ -238,13 +294,20 @@ public class TeleOp_Solo extends RobotOpMode {
         double dt = Math.min((now - lastLoopNanos) / 1e9, 0.05);
         lastLoopNanos = now;
 
-        if (!turretOffsetControlUnlocked
-                || Math.abs(gamepad2.right_stick_x) < Constants.turretJoystickDeadband) {
+        double raw = gamepad2.right_stick_x;
+        if (!turretOffsetControlUnlocked || Math.abs(raw) < Constants.turretJoystickDeadband) {
             return;
         }
 
+        // Right stick X drives the turret aim offset (same offset the old DPad
+        // used). Sign is negated versus that DPad mapping, which turned the turret
+        // the wrong way: push right -> turret right, push left -> turret left.
+        // An expo curve makes it smooth: barely moving the stick nudges the offset
+        // slowly for fine aiming, pulling it hard turns quickly.
+        double shaped = Math.signum(raw)
+                * Math.pow(Math.abs(raw), Constants.turretJoystickExponent);
         double nextOffset = Constants.turretAimOffsetDegrees
-                + gamepad2.right_stick_x
+                - shaped
                 * Constants.turretJoystickOffsetRateDegreesPerSecond
                 * dt;
         Constants.turretAimOffsetDegrees = Math.max(

@@ -4,7 +4,6 @@ import com.pedropathing.ivy.Command;
 import com.qualcomm.robotcore.hardware.PwmControl;
 import com.qualcomm.robotcore.hardware.Servo;
 import com.qualcomm.robotcore.hardware.ServoImplEx;
-import com.qualcomm.robotcore.util.Range;
 
 import org.firstinspires.ftc.robotcore.external.Telemetry;
 import org.firstinspires.ftc.teamcode.robot.Robot;
@@ -33,22 +32,22 @@ public class Leds {
         led2 = robot.hardwareMap.get(Servo.class, HardwareNames.led2);
         telemetry = robot.telemetry;
 
-        // The color chart maps position 0-1 to 500-2500us pulses. Force that
-        // full PWM range so the FTC values land on the intended colors.
-        setFullPwmRange(led1);
-        setFullPwmRange(led2);
+        // The Base10 chart's FTC values assume the standard 600-2400us servo
+        // range. Pin that explicitly so each value lands on the intended color.
+        // (Forcing 500-2500 pushed red down to ~1054us, below the panel's 1100us
+        // "off" threshold, which is why red read as off.)
+        setChartPwmRange(led1);
+        setChartPwmRange(led2);
     }
 
-    private void setFullPwmRange(Servo servo) {
+    private void setChartPwmRange(Servo servo) {
         if (servo instanceof ServoImplEx) {
-            ((ServoImplEx) servo).setPwmRange(new PwmControl.PwmRange(500, 2500));
+            ((ServoImplEx) servo).setPwmRange(new PwmControl.PwmRange(600, 2400));
         }
     }
 
     private double ballCountColor(int ballCount) {
-        switch (Range.clip(ballCount, 0, 3)) {
-            case 0:
-                return Constants.ledRed;
+        switch (ballCount) {
             case 1:
                 return Constants.ledOrange;
             case 2:
@@ -56,7 +55,8 @@ public class Leds {
             case 3:
                 return Constants.ledGreen;
             default:
-                return Constants.ledOff;
+                // 0 (and any other value) stays red.
+                return Constants.ledRed;
         }
     }
 

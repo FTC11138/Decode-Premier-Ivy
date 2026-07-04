@@ -14,6 +14,7 @@ import static com.pedropathing.ivy.commands.Commands.*;
 public class Intake {
     private boolean slowMode = false;
     private Mode mode = Mode.OFF;
+    private long lastSpindexerCcwMs = 0;
 
     private final Robot robot;
     private final DcMotorEx intakeMotor;
@@ -57,7 +58,7 @@ public class Intake {
         slowMode = true;
     }
 
-    public void speedUp() {`
+    public void speedUp() {
         slowMode = false;
     }
 
@@ -66,26 +67,45 @@ public class Intake {
             switch (mode) {
                 case ON:
                     intakeMotor.setPower(slowMode ? Constants.intakeSlowPowerClose : Constants.intakeFastPower);
-                    intakeServo.setPower(-1);
                     break;
                 case OFF:
                     intakeMotor.setPower(Constants.intakeOffPower);
-                    intakeServo.setPower(0);
                     break;
                 case REVERSE:
                     intakeMotor.setPower(Constants.intakeReversePower);
-                    intakeServo.setPower(0);
                     break;
             }
 
-            // While the spindexer indexes counterclockwise (not the shooting
-            // direction), drive the intake servo forward to help feed balls.
-            boolean spindexerCounterClockwise = robot.spindexer.isSpinningCounterClockwise();
-            if (spindexerCounterClockwise) {
-                intakeServo.setPower(1);
-            }
+            // The feed servo always tracks the spindexer:
+            //  - spindexer counterclockwise -> +1 (outwards), overrides everything,
+            //    and keeps going intakeServoCcwCoastMs after the turn ends
+            //  - otherwise intake on OR spindexer clockwise -> -1 (inwards)
+            //  - shooting (without a turn) or nothing happening -> 0
+            // Intake-on / clockwise / shooting all supersede the CCW coast.
+            boolean ccw = robot.spindexer.isSpinningCounterClockwise();
+            boolean cw = robot.spindexer.isSpinningClockwise();
+            boolean shooting = robot.spindexer.isShooting();
+            boolean intakeOn = mode == Mode.ON;
 
-            telemetry.addData("Intake Servo Feed (Spindexer CCW)", spindexerCounterClockwise);
+            if (ccw) {
+                lastSpindexerCcwMs = System.currentTimeMillis();
+            }
+            boolean ccwCoast =
+                    System.currentTimeMillis() - lastSpindexerCcwMs < Constants.intakeServoCcwCoastMs;
+
+            double servoPower;
+            if (ccw) {
+                servoPower = 1;
+            } else if (intakeOn || cw || shooting) {
+                servoPower = (intakeOn || cw) ? -1 : 0;
+            } else if (ccwCoast) {
+                servoPower = 1;
+            } else {
+                servoPower = 0;
+            }
+            intakeServo.setPower(servoPower);
+
+            telemetry.addData("Intake Servo Power", servoPower);
             telemetry.addData("Intake Current", intakeMotor.getCurrent(CurrentUnit.MILLIAMPS));
             telemetry.addData("Intake Velocity", intakeMotor.getVelocity());
         });
