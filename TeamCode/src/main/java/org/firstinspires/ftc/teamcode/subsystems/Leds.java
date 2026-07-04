@@ -28,7 +28,9 @@ public class Leds {
 
     public Leds(Robot robot) {
         this.robot = robot;
-        led1 = robot.hardwareMap.get(Servo.class, HardwareNames.led1);
+        // led1 (the "ready" light) is unwired for now; tolerate it being absent
+        // from the config so the working ball-count light still runs.
+        led1 = tryGetServo(robot, HardwareNames.led1);
         led2 = robot.hardwareMap.get(Servo.class, HardwareNames.led2);
         telemetry = robot.telemetry;
 
@@ -38,6 +40,14 @@ public class Leds {
         // "off" threshold, which is why red read as off.)
         setChartPwmRange(led1);
         setChartPwmRange(led2);
+    }
+
+    private Servo tryGetServo(Robot robot, String name) {
+        try {
+            return robot.hardwareMap.get(Servo.class, name);
+        } catch (RuntimeException e) {
+            return null;
+        }
     }
 
     private void setChartPwmRange(Servo servo) {
@@ -66,9 +76,25 @@ public class Leds {
             int ballCount = robot.spindexer.getBallCount();
 
             double led1Color = shooterReady ? Constants.ledPurple : Constants.ledOff;
-            double led2Color = ballCountColor(ballCount);
+            // The dedicated "ready" LED (led1) is unwired for now, so surface the
+            // ready state on the working ball-count LED:
+            //   3 balls + ready -> purple
+            //   2 balls + ready -> ledReadyTwoBalls (distinct, near-purple)
+            // (2 is a ready state because the 3rd ball sometimes doesn't register.)
+            // When not ready it shows the count color, so blue vs green still tells
+            // you 2 vs 3 before the shooter spins up.
+            double led2Color;
+            if (shooterReady && ballCount >= 3) {
+                led2Color = Constants.ledPurple;
+            } else if (shooterReady && ballCount == 2) {
+                led2Color = Constants.ledReadyTwoBalls;
+            } else {
+                led2Color = ballCountColor(ballCount);
+            }
 
-            led1.setPosition(led1Color);
+            if (led1 != null) {
+                led1.setPosition(led1Color);
+            }
             led2.setPosition(led2Color);
 
             telemetry.addData("LED1 Shooter Ready", shooterReady);

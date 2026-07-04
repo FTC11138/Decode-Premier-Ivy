@@ -118,7 +118,9 @@ public class Spindexer {
     public Command rotate120CCWAndIncrementCount() {
         return instant(() -> {
             moveOne120DegreeSlot(1);
-            ballCount++;
+            if (ballCount < 3) {
+                ballCount++;
+            }
         }).requiring(spindexerMotor);
     }
 
@@ -506,7 +508,15 @@ public class Spindexer {
             // Hard jam: current high far longer than any normal load, even while the
             // path looks busy - the ball clearly isn't clearing.
             boolean hardJam = highCurrentDuration >= Constants.intakeHardJamTimeMs;
-            boolean intakeMotorJam = intaking && !shooting && intakeOn && (normalJam || hardJam);
+            // Never run the reverse+index jam response when already full - that is
+            // how a 4th ball was being accepted. At 3 balls the spindexer must not
+            // turn or count from a jam.
+            boolean intakeMotorJam =
+                    intaking && !shooting && intakeOn && ballCount < 3 && (normalJam || hardJam);
+            // At 3 balls a jam still needs to spit the wedged extra ball back out so
+            // it doesn't get stuck, but must NOT turn the spindexer or change count.
+            boolean fullJamReverse =
+                    intaking && !shooting && intakeOn && ballCount >= 3 && (normalJam || hardJam);
 
             // Spindexer strained mid-CCW-turn: the spindexer motor is drawing high
             // current while trying to turn counterclockwise (a ball wedging it).
@@ -530,7 +540,8 @@ public class Spindexer {
 
             // One shared reverse per event (guarded by ignoreUnstuck) so the
             // detectors can never double-schedule the intake reverse.
-            if ((intakeMotorJam || spindexerCurrentJam || shootingJam) && !ignoreUnstuck) {
+            if ((intakeMotorJam || spindexerCurrentJam || shootingJam || fullJamReverse)
+                    && !ignoreUnstuck) {
                 intakeStuck = true;
                 ignoreUnstuck = true;
                 lastUnstuckTime = now;
@@ -545,8 +556,9 @@ public class Spindexer {
                             .then(rotate120CCWAndIncrementCount())
                             .schedule();
                 } else {
-                    // Spindexer strain (mid-CCW-turn) or shooting: reverse the intake
-                    // only - no spindexer turn, no ball-count change.
+                    // Reverse the intake only - no spindexer turn, no count change.
+                    // Covers: spindexer strain mid-CCW-turn, shooting, and a jam at
+                    // 3 balls (spit the extra ball so it can't get stuck).
                     robot.intake.shortReverse().schedule();
                 }
             }

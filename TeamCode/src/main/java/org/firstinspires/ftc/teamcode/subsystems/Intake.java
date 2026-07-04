@@ -40,8 +40,13 @@ public class Intake {
         return instant(() -> mode = Mode.REVERSE).requiring(intakeMotor);
     }
 
+    public Command reverseSlow() {
+        return instant(() -> mode = Mode.REVERSE_SLOW).requiring(intakeMotor);
+    }
+
+    // Jam nudge: gentle reverse so it doesn't spit loaded balls out of the robot.
     public Command shortReverse() {
-        return reverse().then(waitMs(Constants.intakeShortReverseTimeMs)).then(on());
+        return reverseSlow().then(waitMs(Constants.intakeShortReverseTimeMs)).then(on());
     }
 
     public Command toggle() {
@@ -73,6 +78,9 @@ public class Intake {
                     break;
                 case REVERSE:
                     intakeMotor.setPower(Constants.intakeReversePower);
+                    break;
+                case REVERSE_SLOW:
+                    intakeMotor.setPower(Constants.intakeJamReversePower);
                     break;
             }
 
@@ -114,6 +122,7 @@ public class Intake {
     enum Mode {
         ON,
         OFF,
-        REVERSE
+        REVERSE,
+        REVERSE_SLOW
     }
 }

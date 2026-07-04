@@ -57,6 +57,10 @@ public class Constants {
     public static double intakeOffPower = 0;
     public static double intakeReversePower = 1;
     public static double intakeShortReverseTimeMs = 20;
+    // Gentle reverse used only for the jam nudge (short-reverse). Weaker than the
+    // full reverse so it unsticks a ball without flinging loaded balls out of the
+    // robot. The full-strength reverse is still used for the manual/eject reverse.
+    public static double intakeJamReversePower = 0.4;
     // After the spindexer finishes a counterclockwise turn, the feed servo keeps
     // running with it this much longer (unless the intake is running, the
     // spindexer turns clockwise, or it is shooting - those supersede this coast).
@@ -163,7 +167,11 @@ public class Constants {
     public static double ledOrange = 0.333;// 1200us - orange
     public static double ledGreen = 0.500; // 1500us - green
     public static double ledBlue = 0.611;  // 1700us - blue
-    public static double ledPurple = 0.722;// 1900us - violet/purple
+    public static double ledPurple = 0.722;// 1900us - violet/purple (3 balls + ready)
+    // 2 balls + ready. White (>1900us) - the strip zone right next to violet, so
+    // it reads as "almost purple" yet is unmistakably different. Tune toward
+    // indigo (~0.666) if you'd rather a purple-family shade.
+    public static double ledReadyTwoBalls = 0.9; // ~2220us - white
 //    public static double spindexer_kP = 0.005;
 //    public static double spindexer_kI = 0.000001;
 //    public static double spindexer_kD = 0.0001;
@@ -182,10 +190,13 @@ public class Constants {
     // Expo curve on the stick: >1 makes small deflections nudge slowly and large
     // deflections turn fast (2 = squared response). 1.0 would be linear.
     public static double turretJoystickExponent = 1.5;
-    public static double turretMaximumAimOffsetDegrees = 45.0;
+    // Large enough to shift auto-aim across the whole turret range (~265 deg span),
+    // so the manual offset can point the turret anywhere it can physically reach.
+    // The final target is still clipped to [turretMin, turretMax] in TractorBeam.
+    public static double turretMaximumAimOffsetDegrees = 270.0;
     public static double turretPoseXCorrectionInches = 0.0;
     public static double turretHomedAngleDegrees = 0;
-    public static double turretMinAngleDegrees = -90;
+    public static double turretMinAngleDegrees = -175;
     public static double turretMaxAngleDegrees = 90;
 //    public static double turretMinServoPosition = 0.0;
 //    public static double turretMaxServoPosition = 1.0;
