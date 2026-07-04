@@ -130,7 +130,7 @@ public class Constants {
     // of the PID while moving, to break past the mechanical detent/resistance on
     // every turn. Applied only while |error| > deadband, so it never fights the
     // hold at rest. Tune up if it still stalls short, down if it overshoots/jitters.
-    public static double spindexerFeedforward = 0.08;
+    public static double spindexerFeedforward = 0.071;
     public static double spindexerMaxIntegral = 1500.0;
     public static long spindexerMoveTimeoutMs = 3000;
     public static boolean spindexerEncoderReversed = false;
