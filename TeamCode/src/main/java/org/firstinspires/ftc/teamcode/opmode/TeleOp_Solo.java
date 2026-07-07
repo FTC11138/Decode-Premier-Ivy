@@ -23,7 +23,6 @@ public class TeleOp_Solo extends RobotOpMode {
 
     private boolean teleOpEnabled = false;
     private boolean intakeEnabled = false;
-    private boolean turretOffsetControlUnlocked = false;
     private boolean spindexerWasFull = false;
     private boolean shooterFarZone = false;
     private boolean readyToShootWasReady = false;
@@ -36,7 +35,7 @@ public class TeleOp_Solo extends RobotOpMode {
     private boolean gamepad2RightTriggerWasDown = false;
     private boolean gamepad2TouchpadWasDown = false;
     private boolean gatePoseComboWasDown = false;
-    private boolean humanPlayerComboWasDown = false;
+    private boolean bothStickButtonsWasDown = false;
     private long lastLoopNanos = System.nanoTime();
 
     @Override
@@ -87,7 +86,6 @@ public class TeleOp_Solo extends RobotOpMode {
         robot.telemetry.addData("TeleOp Enabled", teleOpEnabled);
         robot.telemetry.addData("Turret X", turretPose.getX());
         robot.telemetry.addData("Turret Y", turretPose.getY());
-        robot.telemetry.addData("Turret Offset Unlocked", turretOffsetControlUnlocked);
         robot.telemetry.addData("Turret Aim Offset", Constants.turretAimOffsetDegrees);
         robot.telemetry.addData("Alliance", Alliance.current);
         robot.telemetry.addData("Target X", Alliance.current.getGoal().getX());
@@ -198,30 +196,28 @@ public class TeleOp_Solo extends RobotOpMode {
         }
         gatePoseComboWasDown = gatePoseCombo;
 
-        // Relocalize to the human-player position (y=6) only when DPad Left AND
-        // DPad Down are held together (a rare combination).
-        boolean humanPlayerCombo = gamepad2.dpad_left && gamepad2.dpad_down;
-        if (humanPlayerCombo && !humanPlayerComboWasDown) {
+        // Relocalize to the human-player corner (y=6) only when BOTH stick buttons
+        // are pressed together, so it can't be triggered by accident.
+        boolean bothStickButtons = gamepad2.left_stick_button && gamepad2.right_stick_button;
+        if (bothStickButtons && !bothStickButtonsWasDown) {
             setHumanPlayerPose();
             gamepad2.rumble(500);
         }
-        humanPlayerComboWasDown = humanPlayerCombo;
+        bothStickButtonsWasDown = bothStickButtons;
 
-        // Hold DPad Up to unlock left-joystick turret offset control.
-        turretOffsetControlUnlocked = gamepad2.dpad_up;
-
-        updateTurretOffsetFromJoystick();
-
-        if (gamepad2.rightStickButtonWasPressed()) {
+        // DPad Left/Right nudge the turret aim offset (hold to keep turning);
+        // DPad Down clears the offset back to 0 (pure auto-aim calculation).
+        updateTurretFromDpad();
+        if (gamepad2.dpadDownWasPressed()) {
             Constants.turretAimOffsetDegrees = 0;
+            robot.turret.enableAutoAim();
         }
 
-        if (gamepad2.leftStickButtonWasPressed()) {
+        // DPad Up toggles the shooter: off, or back on in the last interpolation zone.
+        if (gamepad2.dpadUpWasPressed()) {
             if (robot.shooter.isOn()) {
-                // Off: shooter stops and the hood drops to the bottom.
                 robot.shooter.turnOff();
             } else {
-                // On: resume whichever interpolation zone was last selected.
                 if (shooterFarZone) {
                     robot.shooter.useFarInterpolation();
                 } else {
@@ -236,7 +232,7 @@ public class TeleOp_Solo extends RobotOpMode {
     }
 
     private void handleReadyToShootRumble() {
-        boolean readyToShoot = robot.spindexer.getBallCount() >= 3 && robot.shooter.atTarget();
+        boolean readyToShoot = robot.spindexer.getBallCount() >= 2 && robot.shooter.atTarget();
         if (readyToShoot && !readyToShootWasReady) {
             gamepad2.rumble(400);
         }
@@ -289,27 +285,23 @@ public class TeleOp_Solo extends RobotOpMode {
         }
     }
 
-    private void updateTurretOffsetFromJoystick() {
+    private void updateTurretFromDpad() {
         long now = System.nanoTime();
         double dt = Math.min((now - lastLoopNanos) / 1e9, 0.05);
         lastLoopNanos = now;
 
-        double raw = gamepad2.right_stick_x;
-        if (!turretOffsetControlUnlocked || Math.abs(raw) < Constants.turretJoystickDeadband) {
+        // Hold DPad Left/Right to sweep the turret aim offset at a steady rate:
+        // right -> turret right, left -> turret left.
+        double delta;
+        if (gamepad2.dpad_left) {
+            delta = Constants.turretJoystickOffsetRateDegreesPerSecond * dt;
+        } else if (gamepad2.dpad_right) {
+            delta = -Constants.turretJoystickOffsetRateDegreesPerSecond * dt;
+        } else {
             return;
         }
 
-        // Right stick X drives the turret aim offset (same offset the old DPad
-        // used). Sign is negated versus that DPad mapping, which turned the turret
-        // the wrong way: push right -> turret right, push left -> turret left.
-        // An expo curve makes it smooth: barely moving the stick nudges the offset
-        // slowly for fine aiming, pulling it hard turns quickly.
-        double shaped = Math.signum(raw)
-                * Math.pow(Math.abs(raw), Constants.turretJoystickExponent);
-        double nextOffset = Constants.turretAimOffsetDegrees
-                - shaped
-                * Constants.turretJoystickOffsetRateDegreesPerSecond
-                * dt;
+        double nextOffset = Constants.turretAimOffsetDegrees + delta;
         Constants.turretAimOffsetDegrees = Math.max(
                 -Constants.turretMaximumAimOffsetDegrees,
                 Math.min(Constants.turretMaximumAimOffsetDegrees, nextOffset)
@@ -335,8 +327,8 @@ public class TeleOp_Solo extends RobotOpMode {
     private void setGatePose() {
         robot.drivetrain.setPose(
                 Alliance.current == Alliance.BLUE
-                        ? new Pose(17, 80, Math.PI)
-                        : new Pose(FIELD_WIDTH - 17, 80, 0)
+                        ? new Pose(14.5, 80, Math.toDegrees(90))
+                        : new Pose(128.5, 83, Math.toDegrees(275))
         );
     }
 
