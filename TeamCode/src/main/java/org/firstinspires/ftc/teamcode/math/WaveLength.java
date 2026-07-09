@@ -59,27 +59,30 @@ public class WaveLength {
             FAR_X,
             FAR_Y,
             new double[][]{
-                    {-1870, -1850},
-                    {-1915, -1890},
-                    {-1990, -1960}
+                    // rows = X (43, 71, 100); cols = Y (9, 27)
+                    {-1940, -1800},
+                    {-2010, -1950},
+                    {-2080, -2040}
             });
 
     private static final Interpolation2D farHoodInterpolation = new BilinearInterpolation(
             FAR_X,
             FAR_Y,
             new double[][]{
-                    {0.00, 0.01},
-                    {0.00, 0.00},
-                    {0.00, 0.00}
+                    // rows = X (43, 71, 100); cols = Y (9, 27)
+                    {0.09, 0.18},
+                    {0.09, 0.12},
+                    {0.11, 0.11}
             });
 
     private static final Interpolation2D closeVelocityInterpolation = new BilinearInterpolation(
             CLOSE_X,
             CLOSE_Y,
             new double[][]{
-                    {-1560, -1400, -1350, -1300},
-                    {-1630, -1490, -1440, -1350},
-                    {-1750, -1620, -1580, -1520},
+                    // rows = X (50, 71, 85); cols = Y (63, 88, 111, 130)
+                    {-1530, -1420, -1350, -1305},
+                    {-1650, -1560, -1520, -1470},
+                    {-1760, -1630, -1580, -1560},
             }
     );
 
@@ -87,9 +90,10 @@ public class WaveLength {
             CLOSE_X,
             CLOSE_Y,
             new double[][]{
-                    {0.34, 0.50, 0.60, 0.81},
-                    {0.22, 0.27, 0.27, 0.36},
-                    {0.06, 0.07, 0.12, 0.22},
+                    // rows = X (50, 71, 85); cols = Y (63, 88, 111, 130)
+                    {0.40, 0.52, 0.55, 0.59},
+                    {0.30, 0.35, 0.38, 0.43},
+                    {0.19, 0.24, 0.25, 0.26},
             }
     );
 

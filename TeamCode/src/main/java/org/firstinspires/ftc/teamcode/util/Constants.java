@@ -56,7 +56,7 @@ public class Constants {
     public static double intakeSlowPowerYThreshold = 48;
     public static double intakeOffPower = 0;
     public static double intakeReversePower = 1;
-    public static double intakeShortReverseTimeMs = 20;
+    public static double intakeShortReverseTimeMs = 30;
     // Gentle reverse used only for the jam nudge (short-reverse). Weaker than the
     // full reverse so it unsticks a ball without flinging loaded balls out of the
     // robot. The full-strength reverse is still used for the manual/eject reverse.
@@ -99,6 +99,9 @@ public class Constants {
     public static boolean shooterBottomReversed = true;
     public static boolean shooterTopEnabled = true;
     public static boolean shooterBottomEnabled = true;
+
+    public static double shooterTestSpeed = 600;
+    public static double shooterTestHood = 0.81;
 
     public static double frontShotVelocity = 1000;
     public static double farShotVelocity = 1600;

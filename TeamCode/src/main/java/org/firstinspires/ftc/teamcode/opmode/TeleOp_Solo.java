@@ -36,7 +36,6 @@ public class TeleOp_Solo extends RobotOpMode {
     private boolean gamepad2TouchpadWasDown = false;
     private boolean gatePoseComboWasDown = false;
     private boolean bothStickButtonsWasDown = false;
-    private long lastLoopNanos = System.nanoTime();
 
     @Override
     public void init() {
@@ -58,7 +57,6 @@ public class TeleOp_Solo extends RobotOpMode {
     public void start() {
         teleOpEnabled = false;
         robot.spindexer.resetEncoderZero();
-        lastLoopNanos = System.nanoTime();
     }
 
     @Override
@@ -127,8 +125,8 @@ public class TeleOp_Solo extends RobotOpMode {
 
         // Fixed-shot test: spin up at 500 tps with the hood fully out (0.81).
         if (gamepad1.crossWasPressed()) {
-            robot.shooter.setTarget(500);
-            robot.shooter.setHoodPosition(0.81);
+            robot.shooter.setTarget(Constants.shooterTestSpeed);
+            robot.shooter.setHoodPosition(Constants.shooterTestHood);
             robot.shooter.turnOn();
         }
     }
@@ -286,17 +284,13 @@ public class TeleOp_Solo extends RobotOpMode {
     }
 
     private void updateTurretFromDpad() {
-        long now = System.nanoTime();
-        double dt = Math.min((now - lastLoopNanos) / 1e9, 0.05);
-        lastLoopNanos = now;
-
-        // Hold DPad Left/Right to sweep the turret aim offset at a steady rate:
-        // right -> turret right, left -> turret left.
+        // Press (not hold) DPad Left/Right to step the turret aim offset by
+        // turretAimOffsetStepDegrees per click: right -> turret right, left -> left.
         double delta;
-        if (gamepad2.dpad_left) {
-            delta = Constants.turretJoystickOffsetRateDegreesPerSecond * dt;
-        } else if (gamepad2.dpad_right) {
-            delta = -Constants.turretJoystickOffsetRateDegreesPerSecond * dt;
+        if (gamepad2.dpadLeftWasPressed()) {
+            delta = Constants.turretAimOffsetStepDegrees;
+        } else if (gamepad2.dpadRightWasPressed()) {
+            delta = -Constants.turretAimOffsetStepDegrees;
         } else {
             return;
         }
