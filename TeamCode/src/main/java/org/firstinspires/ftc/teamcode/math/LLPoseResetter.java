@@ -31,7 +31,32 @@ public class LLPoseResetter {
         camera.stop();
     }
 
+    /**
+     * Feed the robot's current field yaw to the camera so MegaTag2 can resolve a
+     * stable pose. Call this every loop (not just at reset time) so the yaw the
+     * Limelight uses is always fresh - MT2 is only as good as the heading it's given.
+     * The heading is converted from Pedro's frame to the FTC field frame the
+     * Limelight reports in.
+     */
+    public void updateOrientation(Drivetrain drivetrain) {
+        Pose pedroPose = drivetrain.getPose();
+        if (pedroPose == null) return;
+
+        Pose ftcPose = new Pose(
+                pedroPose.getX(),
+                pedroPose.getY(),
+                pedroPose.getHeading(),
+                PedroCoordinates.INSTANCE
+        ).getAsCoordinateSystem(FTCCoordinates.INSTANCE);
+
+        camera.updateRobotOrientation(Math.toDegrees(ftcPose.getHeading()));
+    }
+
     public boolean resetPose(Drivetrain drivetrain) {
+        // Make sure MegaTag2 has the current yaw before we read its pose. For the
+        // freshest result, callers should also call updateOrientation() every loop.
+        updateOrientation(drivetrain);
+
         Pose cameraPose = getRobotPoseFromCamera();
         if (cameraPose == null) return false;
 
@@ -75,7 +100,7 @@ public class LLPoseResetter {
             return null;
         }
 
-        return convertToPedroPose(result.getBotpose());
+        return convertToPedroPose(result.getBotpose_MT2());
     }
 
     private boolean isReasonableReset(Pose currentPose, Pose cameraPose) {
