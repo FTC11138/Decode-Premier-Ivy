@@ -3,6 +3,7 @@ package org.firstinspires.ftc.teamcode.pedroPathing;
 import com.bylazar.configurables.annotations.Configurable;
 import com.pedropathing.control.FilteredPIDFCoefficients;
 import com.pedropathing.control.PIDFCoefficients;
+import com.pedropathing.control.PredictiveBrakingCoefficients;
 import com.pedropathing.follower.Follower;
 import com.pedropathing.follower.FollowerConstants;
 import com.pedropathing.ftc.FollowerBuilder;
@@ -20,8 +21,8 @@ import org.firstinspires.ftc.teamcode.util.HardwareNames;
 @Configurable
 public class Constants {
     public static double maxPower = 1;
-    public static double xVelocity = 75;
-    public static double yVelocity = 60;
+    public static double xVelocity = 86.8;
+    public static double yVelocity = 54.5;
 
     public static boolean leftFrontReversed = true;
     public static boolean leftRearReversed = true;
@@ -34,52 +35,56 @@ public class Constants {
     public static boolean strafeEncoderReversed = false;
 
     public static FollowerConstants followerConstants = new FollowerConstants()
-            .mass(16.2)
-            .centripetalScaling(1)
-            .forwardZeroPowerAcceleration(-25.93469313136796)
-            .lateralZeroPowerAcceleration(-67.34249184408006)
-            .translationalPIDFCoefficients(new PIDFCoefficients(
-                    0.16,
-                    0,
-                    0.02,
-                    0
-            ))
-            .translationalPIDFSwitch(4)
-            .secondaryTranslationalPIDFCoefficients(new PIDFCoefficients(
-                    0.16,
-                    0,
-                    0.02,
-                    0
-            ))
+            .mass(14.7)
+            .centripetalScaling(0)
+//            .forwardZeroPowerAcceleration(-25.93469313136796)
+//            .lateralZeroPowerAcceleration(-67.34249184408006)
+//            .translationalPIDFCoefficients(new PIDFCoefficients(
+//                    0.16,
+//                    0,
+//                    0.02,
+//                    0
+//            ))
+//            .translationalPIDFSwitch(4)
+//            .secondaryTranslationalPIDFCoefficients(new PIDFCoefficients(
+//                    0.16,
+//                    0,
+//                    0.02,
+//                    0
+//            ))
             .headingPIDFCoefficients(new PIDFCoefficients(
-                    0.8,
-                    0,
+                    1.2,
+                    0.0004,
                     0.06,
-                    0.02
+                    0.03
             ))
             .secondaryHeadingPIDFCoefficients(new PIDFCoefficients(
-                    0.8,
+                    1.6,
                     0,
-                    0.06,
-                    0.02
+                    0.14,
+                    0.026
             ))
-            .drivePIDFCoefficients(new FilteredPIDFCoefficients(
-                    0.01,
-                    0,
-                    0.000001,
-                    0.6,
-                    0.002
-            ))
-            .secondaryDrivePIDFCoefficients(new FilteredPIDFCoefficients(
-                    0.01,
-                    0,
-                    0.000001,
-                    0.6,
-                    0.002
-            ))
-            .drivePIDFSwitch(15)
-            .centripetalScaling(0.0005);
-
+//            .drivePIDFCoefficients(new FilteredPIDFCoefficients(
+//                    0.01,
+//                    0,
+//                    0.000001,
+//                    0.6,
+//                    0.002
+//            ))
+//            .secondaryDrivePIDFCoefficients(new FilteredPIDFCoefficients(
+//                    0.01,
+//                    0,
+//                    0.000001,
+//                    0.6,
+//                    0.002
+//            ))
+            .predictiveBrakingCoefficients(new PredictiveBrakingCoefficients(
+                    0.13,
+                    0.061,
+                    0.00195
+            ));
+//            .drivePIDFSwitch(15)
+//            .centripetalScaling(0.0005);
     public static MecanumConstants driveConstants = new MecanumConstants()
             .maxPower(maxPower)
             .leftFrontMotorName(HardwareNames.frontLeft)
@@ -104,11 +109,11 @@ public class Constants {
             .encoderResolution(GoBildaPinpointDriver.GoBildaOdometryPods.goBILDA_4_BAR_POD);
 
     public static PathConstraints pathConstraints = new PathConstraints(
-            0.995,
-            0.1,
-            0.1,
-            0.009,
-            250,
+            0.93,
+            0.3,   // velocityConstraint: was 0.1 (nudged up slightly)
+            0.3,   // translationalConstraint (in): was 0.1 (slightly looser -> less settle time)
+            0.02,  // headingConstraint (rad ~1.1deg): was 0.009 (slightly looser)
+            100,
             1.25,
             10,
             1

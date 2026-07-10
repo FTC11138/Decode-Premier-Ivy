@@ -91,7 +91,9 @@ public class Constants {
     public static double shooterKd = 0;
     public static double shooterKs = 0.065;
     public static double shooterKv = 0.000365;
-    public static int shooterVelocityTolerance = 20;
+    // TEMPORARY: widened from 20 so atTarget() (and the ready LED) trips easily and
+    // the auto reliably fires. Tighten back down once shooting is confirmed working.
+    public static int shooterVelocityTolerance = 100;
     public static boolean shooterOverride = false;
     public static double shooterOverrideTarget = 1000;
     public static double shooterPowerSign = -1.0;
