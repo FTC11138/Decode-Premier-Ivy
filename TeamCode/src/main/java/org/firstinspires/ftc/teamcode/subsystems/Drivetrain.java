@@ -169,6 +169,11 @@ public class Drivetrain {
         return follow(follower, path);
     }
 
+    /** Follow a path capped at maxPower (0..1) — used to move slowly while intaking. */
+    public Command followPath(PathChain path, double maxPower) {
+        return follow(follower, path, maxPower);
+    }
+
     public Command periodic() {
         return infinite(() -> {
             org.firstinspires.ftc.teamcode.pedroPathing.Constants.applyTunableConstants();
