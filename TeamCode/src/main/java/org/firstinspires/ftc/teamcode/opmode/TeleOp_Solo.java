@@ -135,7 +135,10 @@ public class TeleOp_Solo extends RobotOpMode {
         boolean rightTrigger = gamepad1.right_trigger > TRIGGER_THRESHOLD;
         if (rightTrigger && !gamepad1RightTriggerWasDown
                 && robot.shooter.isOn()
-                && robot.shooter.atTarget()) {
+                && robot.shooter.atTarget()
+                && robot.turret.isAimed()
+                && (!Constants.shooterRequireSlowToFire
+                    || robot.drivetrain.getVelocityInchesPerSecond() <= Constants.shooterMaxFireVelocityIps)) {
             scheduleShoot();
         }
         gamepad1RightTriggerWasDown = rightTrigger;

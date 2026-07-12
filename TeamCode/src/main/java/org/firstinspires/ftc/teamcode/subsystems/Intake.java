@@ -24,6 +24,10 @@ public class Intake {
 
     private final CRServo intakeServo;
     private final Telemetry telemetry;
+    // Cached once per loop in periodic(). getCurrent() is a hub round-trip
+    // (~2-3 ms, not bulk-cached), so it is read exactly once and reused by both
+    // this subsystem's telemetry and the spindexer's jam detection.
+    private double cachedCurrentMilliamps = 0;
 
     public Intake(Robot robot) {
         this.robot = robot;
@@ -63,7 +67,7 @@ public class Intake {
         return conditional(() -> mode == Mode.OFF, on(), off());
     }
 
-    public double getIntakeCurrent() {return intakeMotor.getCurrent(CurrentUnit.MILLIAMPS);}
+    public double getIntakeCurrent() {return cachedCurrentMilliamps;}
 
     public boolean isOn() {
         return mode == Mode.ON;
@@ -79,6 +83,10 @@ public class Intake {
 
     public Command periodic() {
         return infinite(() -> {
+            // getCurrent() is not bulk-cached, so read it exactly once per loop
+            // here; getIntakeCurrent() and the telemetry below reuse this value.
+            cachedCurrentMilliamps = intakeMotor.getCurrent(CurrentUnit.MILLIAMPS);
+
             // A direct jam reverse (requestJamReverse) overrides the mode entirely
             // for its window, so recovery still fires when a scheduled reverse would
             // be blocked (auto). It runs the same gentle reverse power as the nudge.
@@ -136,7 +144,7 @@ public class Intake {
 
             telemetry.addData("Intake Servo Power", servoPower);
             telemetry.addData("Intake Jam Reversing", jamReversing);
-            telemetry.addData("Intake Current", intakeMotor.getCurrent(CurrentUnit.MILLIAMPS));
+            telemetry.addData("Intake Current", cachedCurrentMilliamps);
             telemetry.addData("Intake Velocity", intakeMotor.getVelocity());
         });
     }

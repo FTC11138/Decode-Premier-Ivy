@@ -289,7 +289,7 @@ public abstract class GateIntakeWithFarAuto extends RobotOpMode {
      * routine always advances after a shot. No jam/retry logic here on purpose.
      */
     private Command shootWhenReady() {
-        return waitUntil(() -> robot.shooter.atTarget())
+        return waitUntil(() -> robot.shooter.atTarget() && robot.turret.isAimed())
                 .raceWith(waitMs(SHOOT_READY_TIMEOUT_MS))
                 // Slight settle before firing. The scheduler waits here, but the
                 // drivetrain (holding position) and turret (aiming) run in their

@@ -63,6 +63,16 @@ public class Turret {
         return targetDegrees;
     }
 
+    // True once the turret has essentially reached its commanded target, used to
+    // gate firing so a ball never leaves while the turret is still slewing.
+    // targetDegrees is already clipped to the reachable range in setTargetDegrees,
+    // so this always eventually trips (it never permanently blocks a shot). The
+    // tolerance MUST stay larger than deadbandDeg - the controller stops applying
+    // power inside the deadband, so a tighter tolerance could never become true.
+    public boolean isAimed() {
+        return Math.abs(targetDegrees - getAngleDegrees()) <= Constants.turretAimedToleranceDegrees;
+    }
+
     public void setTargetDegrees(double targetDegrees) {
         if (mode == Mode.HOME) return;
         mode = Mode.POSITION;

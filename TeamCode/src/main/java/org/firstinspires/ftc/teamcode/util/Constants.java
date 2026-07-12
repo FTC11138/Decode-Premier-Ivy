@@ -106,9 +106,24 @@ public class Constants {
     public static double shooterKd = 0;
     public static double shooterKs = 0.065;
     public static double shooterKv = 0.000365;
+    // Voltage compensation: scales flywheel output by (nominal / measured) so the
+    // motor receives constant voltage as the battery sags. When comp is off or the
+    // battery is at nominal, the scale is 1.0 and behavior is unchanged.
+    public static boolean shooterVoltageComp = true;     // master switch
+    public static double shooterNominalVoltage = 12.0;   // voltage kV was tuned at
+    // Integral-zone: only accumulate the flywheel integral when |error| is within
+    // this window, preventing windup during spin-up. shooterKi above is the
+    // integral's own switch (0 = disabled), so this is currently inert until kI>0.
+    public static double shooterIntegralZoneTps = 150;
     // TEMPORARY: widened from 20 so atTarget() (and the ready LED) trips easily and
     // the auto reliably fires. Tighten back down once shooting is confirmed working.
     public static int shooterVelocityTolerance = 100;
+    // TeleOp firing discipline (OFF by default = no behavior change). When enabled,
+    // the right-TRIGGER shot is blocked while the robot is driving faster than
+    // shooterMaxFireVelocityIps, so a moving robot does not throw shots off-aim.
+    // The right-BUMPER stays ungated as a manual override. Enable + tune on hardware.
+    public static boolean shooterRequireSlowToFire = false;
+    public static double shooterMaxFireVelocityIps = 12.0;
     public static boolean shooterOverride = false;
     public static double shooterOverrideTarget = 1000;
     public static double shooterPowerSign = -1.0;
@@ -143,6 +158,14 @@ public class Constants {
 //    public static double autoVel = -1520;
 
     public static double shooterHoodTolerance = 0.015;
+    // Estimated hood-servo travel speed in servo-position units per second. The
+    // hood servo has no feedback (getPosition() only echoes the last command), so
+    // Shooter models the hood's physical position by integrating the commanded
+    // target at this rate. atTarget() waits for that model to arrive, so a shot
+    // never fires while the hood is still traveling to a new angle (e.g. right
+    // after a close<->far zone switch). Tune DOWN if shots still leave before the
+    // hood settles; UP if it needlessly delays ready shots.
+    public static double shooterHoodSlewRatePerSecond = 1.0;
 
     public static double spindexerTicksPerRevolution = 8192.0;
     public static double spindexerDeadbandDegrees = 2.0;
@@ -234,6 +257,11 @@ public class Constants {
     public static boolean turretServoReversed = true;
 
     public static double deadbandDeg = 1.0;
+    // Firing gate: the turret counts as "aimed" once |target - angle| is within
+    // this. MUST be > deadbandDeg (the controller stops correcting inside the
+    // deadband, so a tighter tolerance could never trip and would block firing).
+    // Tighten toward deadbandDeg for more accuracy once verified on hardware.
+    public static double turretAimedToleranceDegrees = 2.0;
     public static double errAlpha = 0.35;
 //    public static double CENTER_KP = 0.008;
 //    public static double CENTER_KD = 0.0001;
