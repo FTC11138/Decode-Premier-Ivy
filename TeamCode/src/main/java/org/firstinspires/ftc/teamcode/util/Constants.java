@@ -61,6 +61,12 @@ public class Constants {
     // full reverse so it unsticks a ball without flinging loaded balls out of the
     // robot. The full-strength reverse is still used for the manual/eject reverse.
     public static double intakeJamReversePower = 0.4;
+    // How long the direct jam reverse (Spindexer periodic -> Intake.requestJamReverse)
+    // runs per event. This is the recovery that clears a stuck ball during AUTO,
+    // where a scheduled reverse would be blocked. Longer = clears heavier jams but
+    // risks backing a good ball out; paired with spindexerUnstuckWaitMs cooldown.
+    // THIS IS THE FIRST KNOB TO RAISE if the robot still wedges (e.g. at the gate).
+    public static long intakeJamReverseDurationMs = 150;
     // After the spindexer finishes a counterclockwise turn, the feed servo keeps
     // running with it this much longer (unless the intake is running, the
     // spindexer turns clockwise, or it is shooting - those supersede this coast).

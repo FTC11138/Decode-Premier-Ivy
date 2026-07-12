@@ -539,7 +539,16 @@ public class Spindexer {
                     && highCurrentDuration >= Constants.intakeStuckDetectionTimeMs;
 
             // One shared reverse per event (guarded by ignoreUnstuck) so the
-            // detectors can never double-schedule the intake reverse.
+            // detectors can never double-fire the intake reverse.
+            //
+            // CRITICAL: the recovery is driven DIRECTLY (requestJamReverse +
+            // moveOne120DegreeSlot), NOT by scheduling a command. During auto the
+            // whole Sequential holds the intake AND spindexer motors at a higher
+            // priority, so a scheduled recovery command would be blocked and
+            // cancelled by the Ivy scheduler - i.e. it would never run and the robot
+            // would just grind against the jam. Direct calls bypass the scheduler
+            // (the periodics own the actual motor writes anyway), so the reverse
+            // still fires under load, in auto and teleop alike.
             if ((intakeMotorJam || spindexerCurrentJam || shootingJam || fullJamReverse)
                     && !ignoreUnstuck) {
                 intakeStuck = true;
@@ -548,18 +557,19 @@ public class Spindexer {
                 intakeHighCurrentStartTime = -1;
                 spindexerHighCurrentStartTime = -1;
 
+                // Reverse the intake to spit the wedged ball back out. Covers every
+                // jam case (intake strain, spindexer strain mid-turn, shooting, and
+                // a jam at 3 balls).
+                robot.intake.requestJamReverse(Constants.intakeJamReverseDurationMs);
+
                 if (intakeMotorJam && !spindexerCurrentJam) {
-                    // Intake motor jam with the spindexer idle: reverse, then index
-                    // a slot and count the freed ball.
+                    // Intake motor jam with the spindexer idle: also index a slot and
+                    // count the freed ball (was shortReverse().then(rotate120CCW...)).
                     jamIndexPending = true;
-                    robot.intake.shortReverse()
-                            .then(rotate120CCWAndIncrementCount())
-                            .schedule();
-                } else {
-                    // Reverse the intake only - no spindexer turn, no count change.
-                    // Covers: spindexer strain mid-CCW-turn, shooting, and a jam at
-                    // 3 balls (spit the extra ball so it can't get stuck).
-                    robot.intake.shortReverse().schedule();
+                    moveOne120DegreeSlot(1);
+                    if (ballCount < 3) {
+                        ballCount++;
+                    }
                 }
             }
 

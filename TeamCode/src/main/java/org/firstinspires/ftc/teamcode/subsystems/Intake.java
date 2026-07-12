@@ -15,6 +15,9 @@ public class Intake {
     private boolean slowMode = false;
     private Mode mode = Mode.OFF;
     private long lastSpindexerCcwMs = 0;
+    // When > now, the periodic reverses the intake regardless of mode. Set by
+    // requestJamReverse() so jam recovery works without scheduling a command.
+    private long jamReverseUntilMs = 0;
 
     private final Robot robot;
     private final DcMotorEx intakeMotor;
@@ -49,6 +52,22 @@ public class Intake {
         return reverseSlow().then(waitMs(Constants.intakeShortReverseTimeMs)).then(on());
     }
 
+    /**
+     * Reverse the intake for durationMs directly from the periodic - no command is
+     * scheduled, so it is never blocked by a higher-priority command that holds the
+     * intake motor (which is exactly what happens during auto, where the whole
+     * Sequential holds the intake motor for its entire run). After the window the
+     * periodic automatically returns to whatever the current mode dictates. This is
+     * the mechanism the spindexer's jam recovery uses so it works in auto too.
+     */
+    public void requestJamReverse(long durationMs) {
+        jamReverseUntilMs = System.currentTimeMillis() + durationMs;
+    }
+
+    public boolean isJamReversing() {
+        return System.currentTimeMillis() < jamReverseUntilMs;
+    }
+
     public Command toggle() {
         return conditional(() -> mode == Mode.OFF, on(), off());
     }
@@ -69,19 +88,27 @@ public class Intake {
 
     public Command periodic() {
         return infinite(() -> {
-            switch (mode) {
-                case ON:
-                    intakeMotor.setPower(slowMode ? Constants.intakeSlowPowerClose : Constants.intakeFastPower);
-                    break;
-                case OFF:
-                    intakeMotor.setPower(Constants.intakeOffPower);
-                    break;
-                case REVERSE:
-                    intakeMotor.setPower(Constants.intakeReversePower);
-                    break;
-                case REVERSE_SLOW:
-                    intakeMotor.setPower(Constants.intakeJamReversePower);
-                    break;
+            // A direct jam reverse (requestJamReverse) overrides the mode entirely
+            // for its window, so recovery still fires when a scheduled reverse would
+            // be blocked (auto). It runs the same gentle reverse power as the nudge.
+            boolean jamReversing = isJamReversing();
+            if (jamReversing) {
+                intakeMotor.setPower(Constants.intakeJamReversePower);
+            } else {
+                switch (mode) {
+                    case ON:
+                        intakeMotor.setPower(slowMode ? Constants.intakeSlowPowerClose : Constants.intakeFastPower);
+                        break;
+                    case OFF:
+                        intakeMotor.setPower(Constants.intakeOffPower);
+                        break;
+                    case REVERSE:
+                        intakeMotor.setPower(Constants.intakeReversePower);
+                        break;
+                    case REVERSE_SLOW:
+                        intakeMotor.setPower(Constants.intakeJamReversePower);
+                        break;
+                }
             }
 
             // The feed servo always tracks the spindexer:
@@ -93,7 +120,10 @@ public class Intake {
             boolean ccw = robot.spindexer.isSpinningCounterClockwise();
             boolean cw = robot.spindexer.isSpinningClockwise();
             boolean shooting = robot.spindexer.isShooting();
-            boolean intakeOn = mode == Mode.ON;
+            // During a jam reverse the feed servo must not pull inward (it would
+            // fight the reverse), so treat the intake as "not on" for the feed -
+            // this mirrors the old REVERSE_SLOW nudge, where mode wasn't ON either.
+            boolean intakeOn = mode == Mode.ON && !jamReversing;
 
             if (ccw) {
                 lastSpindexerCcwMs = System.currentTimeMillis();
@@ -114,6 +144,7 @@ public class Intake {
             intakeServo.setPower(servoPower);
 
             telemetry.addData("Intake Servo Power", servoPower);
+            telemetry.addData("Intake Jam Reversing", jamReversing);
             telemetry.addData("Intake Current", intakeMotor.getCurrent(CurrentUnit.MILLIAMPS));
             telemetry.addData("Intake Velocity", intakeMotor.getVelocity());
         });
