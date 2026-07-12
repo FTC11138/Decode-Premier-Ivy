@@ -43,15 +43,6 @@ public class Intake {
         return instant(() -> mode = Mode.REVERSE).requiring(intakeMotor);
     }
 
-    public Command reverseSlow() {
-        return instant(() -> mode = Mode.REVERSE_SLOW).requiring(intakeMotor);
-    }
-
-    // Jam nudge: gentle reverse so it doesn't spit loaded balls out of the robot.
-    public Command shortReverse() {
-        return reverseSlow().then(waitMs(Constants.intakeShortReverseTimeMs)).then(on());
-    }
-
     /**
      * Reverse the intake for durationMs directly from the periodic - no command is
      * scheduled, so it is never blocked by a higher-priority command that holds the

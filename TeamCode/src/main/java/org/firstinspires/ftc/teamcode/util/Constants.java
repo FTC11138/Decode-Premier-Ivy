@@ -57,16 +57,17 @@ public class Constants {
     public static double intakeOffPower = 0;
     public static double intakeReversePower = 1;
     public static double intakeShortReverseTimeMs = 30;
-    // Gentle reverse used only for the jam nudge (short-reverse). Weaker than the
-    // full reverse so it unsticks a ball without flinging loaded balls out of the
-    // robot. The full-strength reverse is still used for the manual/eject reverse.
-    public static double intakeJamReversePower = 0.4;
+    // Reverse power for jam recovery. Strong enough to actually kick a wedged ball
+    // back out quickly (the old 0.4 was too gentle to clear jams in a reasonable
+    // time). If it starts flinging GOOD (loaded) balls back out of the robot, dial
+    // this down toward 0.5. The full-strength reverse is still used for manual/eject.
+    public static double intakeJamReversePower = 0.6;
     // How long the direct jam reverse (Spindexer periodic -> Intake.requestJamReverse)
     // runs per event. This is the recovery that clears a stuck ball during AUTO,
     // where a scheduled reverse would be blocked. Longer = clears heavier jams but
     // risks backing a good ball out; paired with spindexerUnstuckWaitMs cooldown.
     // THIS IS THE FIRST KNOB TO RAISE if the robot still wedges (e.g. at the gate).
-    public static long intakeJamReverseDurationMs = 150;
+    public static long intakeJamReverseDurationMs = 200;
     // After the spindexer finishes a counterclockwise turn, the feed servo keeps
     // running with it this much longer (unless the intake is running, the
     // spindexer turns clockwise, or it is shooting - those supersede this coast).
@@ -79,11 +80,19 @@ public class Constants {
     // Hysteresis release: once the stuck timer starts, it keeps counting until
     // current drops below this, so noise near the trigger doesn't reset it.
     public static double intakeStuckReleaseMilliamps = 3000;
-    public static long intakeStuckDetectionTimeMs = 250;
+    // How long high current must sustain (with NO ball being handled) before a
+    // normal jam fires. Lowered from 250 for a snappier reaction. This path only
+    // runs when the spindexer is idle and no ball is on the sensor, so a normal
+    // load can't trip it - raise it only if idle current noise causes false reverses.
+    public static long intakeStuckDetectionTimeMs = 160;
     // A "hard jam" - current stays high this long even while the auto-index path
     // looks busy (ball at sensor / spindexer stuck mid-move) - forces a reverse
     // and index anyway, since the normal path clearly isn't clearing the ball.
-    public static long intakeHardJamTimeMs = 900;
+    // This is the dominant reaction time when a ball is wedged ON the sensor (the
+    // common case), so it was cut from 900 to react roughly twice as fast. If a
+    // normal load ever pins current long enough to trip it (spurious reverse +
+    // ball miscount mid-load), raise it back toward 700.
+    public static long intakeHardJamTimeMs = 500;
 
     public static double ballDetectThreshold = 0.3;
     public static int ballDetectWait = 170;
@@ -159,7 +168,13 @@ public class Constants {
     public static long spindexerRotationLockoutMs = 500;
     public static long postShootSensorWaitMs = 300;
     public static long shootSingleSensorWait = 350;
-    public static long spindexerUnstuckWaitMs = 750;
+    // Cooldown after a jam recovery fires before another can. Lowered from 750 so a
+    // stubborn jam gets re-pulsed sooner instead of grinding forward for ~600ms
+    // between attempts. CAUTION: an intake-motor jam recovery also advances the
+    // spindexer one slot and increments the ball count, so if a single physical jam
+    // starts inflating the ball count (robot thinks it's full early), raise this
+    // back up. Bounded anyway - the slot/count path stops once ballCount hits 3.
+    public static long spindexerUnstuckWaitMs = 500;
     // Spindexer strained mid-CCW-turn: if the spindexer motor draws more than this
     // while turning counterclockwise, a ball is wedging it, so reverse the intake
     // to relieve it. The sustain time avoids firing on the normal acceleration

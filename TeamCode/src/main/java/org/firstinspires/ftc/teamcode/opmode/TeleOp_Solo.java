@@ -51,6 +51,10 @@ public class TeleOp_Solo extends RobotOpMode {
         robot.drivetrain.clearFieldCentricHeadingReset();
         robot.turret.usePreviousStartingAngle();
         robot.turret.enableAutoAim();
+        // Clear any auto-only aim bias that leaked in (auto sets a right-bias in
+        // Constants.turretAimOffsetDegrees and only zeroes it in its final cleanup
+        // step; if auto was cut short that bias would otherwise carry into TeleOp).
+        Constants.turretAimOffsetDegrees = 0;
         robot.intake.off().schedule();
         robot.spindexer.setIntaking(false).schedule();
         intakeEnabled = false;
@@ -338,8 +342,8 @@ public class TeleOp_Solo extends RobotOpMode {
     private void setGatePose() {
         robot.drivetrain.setPose(
                 Alliance.current == Alliance.BLUE
-                        ? new Pose(14.5, 80, Math.toDegrees(90))
-                        : new Pose(128.5, 83, Math.toDegrees(275))
+                        ? new Pose(14.5, 80, Math.toRadians(90))
+                        : new Pose(128.5, 83, Math.toRadians(275))
         );
     }
 
