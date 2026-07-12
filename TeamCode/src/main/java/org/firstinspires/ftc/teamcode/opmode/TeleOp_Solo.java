@@ -4,6 +4,7 @@ import com.pedropathing.geometry.Pose;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.hardware.Gamepad;
 
+import org.firstinspires.ftc.teamcode.math.LLPoseResetter;
 import org.firstinspires.ftc.teamcode.math.TractorBeam;
 import org.firstinspires.ftc.teamcode.math.TurretLocation;
 import org.firstinspires.ftc.teamcode.robot.Alliance;
@@ -37,10 +38,13 @@ public class TeleOp_Solo extends RobotOpMode {
     private boolean gatePoseComboWasDown = false;
     private boolean bothStickButtonsWasDown = false;
 
+    private LLPoseResetter llPoseResetter;
+
     @Override
     public void init() {
         super.init();
 
+        llPoseResetter = new LLPoseResetter(hardwareMap);
         robot.drivetrain.usePreviousStartingPose();
         robot.drivetrain.startTeleOpDrive();
         robot.drivetrain.setFieldCentricEnabled(true);
@@ -57,6 +61,12 @@ public class TeleOp_Solo extends RobotOpMode {
     public void start() {
         teleOpEnabled = false;
         robot.spindexer.resetEncoderZero();
+        llPoseResetter.start();
+    }
+
+    @Override
+    public void stop() {
+        llPoseResetter.stop();
     }
 
     @Override
@@ -70,6 +80,12 @@ public class TeleOp_Solo extends RobotOpMode {
 
         handleFieldCentricReset();
         handleAllianceToggle();
+
+        // Continuous, heavily-gated MegaTag2 fusion: gently corrects odometry
+        // drift from AprilTags whenever the robot is slow and the reading agrees
+        // with odometry. Safe to call every loop (no-op when the camera is
+        // unavailable or the reading looks suspect).
+        llPoseResetter.periodicUpdate(robot.drivetrain);
 
         if (robot.turret.autoAimEnabled) {
             TractorBeam.aimTurret(robot.drivetrain.getPose(), robot, Alliance.current);
@@ -89,6 +105,7 @@ public class TeleOp_Solo extends RobotOpMode {
         robot.telemetry.addData("Target X", Alliance.current.getGoal().getX());
         robot.telemetry.addData("Target Y", Alliance.current.getGoal().getY());
         robot.telemetry.addData("Spindexer Ball Count", robot.spindexer.getBallCount());
+        robot.telemetry.addData("LL Pose Reset", llPoseResetter.getStatus());
 
         super.loop();
     }
