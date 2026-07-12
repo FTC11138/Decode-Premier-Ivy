@@ -39,6 +39,12 @@ public class Shooter {
     // hood has ACTUALLY arrived (see updateHoodModel / atTarget).
     private double hoodModelPosition = Constants.adjHoodMin;
     private long hoodModelLastTime = System.nanoTime();
+    // Settle-timeout bookkeeping: the hood goal value the settle clock is timing, and
+    // when that clock started. atTarget() lets the hood count as ready once the model
+    // arrives OR this clock expires, so a mis-estimated slew rate can never delay a
+    // shot by more than Constants.shooterHoodMaxSettleMs.
+    private double hoodSettleLastTarget = Constants.adjHoodMin;
+    private long hoodSettleStartMs = System.currentTimeMillis();
 
     public Shooter(Robot robot) {
         flywheelMotorTop = robot.hardwareMap.get(DcMotorEx.class, HardwareNames.flywheelTop);
@@ -180,7 +186,21 @@ public class Shooter {
 
     public boolean atTarget() {
         boolean velocityReady = Math.abs(target - getVelocity()) <= Constants.shooterVelocityTolerance;
-        boolean hoodReady = Math.abs(hoodModelPosition - hoodTarget) <= Constants.shooterHoodTolerance;
+        boolean hoodReady;
+        if (Constants.shooterHoodModelEnabled) {
+            // Ready when the model has arrived, OR the bounded settle timeout has
+            // expired. The timeout guarantees a wrong slew-rate estimate can never
+            // delay a shot more than shooterHoodMaxSettleMs (protects the un-timed
+            // TeleOp trigger); worst case this degrades to master's behavior.
+            boolean hoodModelReady = Math.abs(hoodModelPosition - hoodTarget) <= Constants.shooterHoodTolerance;
+            boolean settleTimedOut =
+                    (System.currentTimeMillis() - hoodSettleStartMs) >= Constants.shooterHoodMaxSettleMs;
+            hoodReady = hoodModelReady || settleTimedOut;
+        } else {
+            // Fallback to master behavior: the servo only echoes the last command,
+            // so this effectively does not gate on the hood settling at all.
+            hoodReady = Math.abs(adjustableHood.getPosition() - hoodTarget) <= Constants.shooterHoodTolerance;
+        }
         return on && target != 0 && velocityReady && hoodReady;
     }
 
@@ -264,6 +284,15 @@ public class Shooter {
             adjustableHood.setPosition(hoodCommand);
             updateHoodModel(hoodCommand);
 
+            // Restart the settle clock whenever the hood goal moves meaningfully.
+            if (Math.abs(hoodTarget - hoodSettleLastTarget) > Constants.shooterHoodTolerance) {
+                hoodSettleLastTarget = hoodTarget;
+                hoodSettleStartMs = System.currentTimeMillis();
+            }
+            boolean hoodSettling = Constants.shooterHoodModelEnabled
+                    && Math.abs(hoodModelPosition - hoodTarget) > Constants.shooterHoodTolerance
+                    && (System.currentTimeMillis() - hoodSettleStartMs) < Constants.shooterHoodMaxSettleMs;
+
             telemetry.addData("Shooter Distance", goalDistance);
             telemetry.addData("Shooter On", on);
             telemetry.addData("Shooter Top Enabled", Constants.shooterTopEnabled);
@@ -274,6 +303,8 @@ public class Shooter {
             telemetry.addData("Flywheel Bottom Power", flywheelMotorBottom.getPower());
             telemetry.addData("Hood Target", hoodTarget);
             telemetry.addData("Hood Position", adjustableHood.getPosition());
+            telemetry.addData("Hood Model Pos", hoodModelPosition);
+            telemetry.addData("Hood Settling", hoodSettling);
             telemetry.addData("Flywheel VoltScale", voltageScale);
             telemetry.addData("Battery V", cachedVoltage);
             telemetry.addData("Close Interpolation Only", closeInterpolationOnly);

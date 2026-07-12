@@ -166,6 +166,15 @@ public class Constants {
     // after a close<->far zone switch). Tune DOWN if shots still leave before the
     // hood settles; UP if it needlessly delays ready shots.
     public static double shooterHoodSlewRatePerSecond = 1.0;
+    // Master switch for the hood-settle model. When false, atTarget() falls back to
+    // master behavior (compares the servo's echoed position to the target, i.e. no
+    // settle gating), so the feature can be disabled instantly from the dashboard.
+    public static boolean shooterHoodModelEnabled = true;
+    // Hard cap (ms) on how long the hood-settle model may hold atTarget() false after
+    // the hood goal changes. Bounds the worst-case delay a wrong slew-rate estimate
+    // could add, protecting the un-timed TeleOp trigger (Auto also has its own 2s
+    // race). Keep comfortably above the real hood travel time so it rarely triggers.
+    public static double shooterHoodMaxSettleMs = 400;
 
     public static double spindexerTicksPerRevolution = 8192.0;
     public static double spindexerDeadbandDegrees = 2.0;
