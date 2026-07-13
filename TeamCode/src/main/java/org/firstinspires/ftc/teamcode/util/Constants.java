@@ -31,6 +31,11 @@ public class Constants {
     public static double redGoalY = 138;
     public static double blueGoalX = 3.5;
     public static double blueGoalY = 138;
+    // Full field span (inches). Single source of truth for mirroring BLUE-authored
+    // poses to RED (auto paths + teleop relocalization) and for PoseMirror's aim
+    // mirror, so those never silently diverge. final = a fixed physical dimension,
+    // not a dashboard-tunable value.
+    public static final double fieldWidthInches = 141.5;
 
     /* -------------------------------------------- CAMERA CONSTANTS -------------------------------------------- */
     //Pipeline: 0
@@ -48,6 +53,63 @@ public class Constants {
     public static double limelightMaxResetHeadingDegrees = 25.0;
     public static int limelightMinimumTagCount = 1;
     public static boolean limelightAllowLargePoseReset = false;
+    // --- Multi-frame snapshot reset (MT2 position-only, auto-triggered) ---------
+    // When true, the camera correction is a discrete, multi-frame snapshot: it
+    // collects several agreeing, quality-gated frames and then snaps X/Y to their
+    // median (keeping the IMU heading, since MegaTag2 can't measure heading). When
+    // false, LLPoseResetter falls back to the legacy continuous soft-fusion blend.
+    // This fits a rear camera that only sees a tag a few times per match.
+    public static boolean limelightUseSnapshotReset = true;
+    // How many distinct, gated camera frames must agree before a reset fires.
+    public static int limelightResetSampleCount = 5;
+    // All samples must fall within this rolling window (ms) or the oldest is dropped.
+    // Keep >= sampleCount / cameraFps; at 15 Hz, 5 frames span ~270 ms.
+    public static double limelightSampleWindowMs = 500;
+    // Reject any frame older than this (ms). Guards against reusing a stale packet.
+    public static double limelightMaxStalenessMs = 100;
+    // Camera-to-tag distance gate (inches). Too close = steep angle / clipped tag;
+    // too far = PnP noise grows. Skipped automatically if per-tag 3D pose is absent.
+    public static double limelightMinTagDistanceInches = 12.0;
+    public static double limelightMaxTagDistanceInches = 120.0;
+    // Reject frames while the robot is rotating faster than this (deg/s); a rear
+    // camera smears badly while spinning.
+    public static double limelightMaxAngularVelocityDps = 60.0;
+    // Buffered samples must agree within this X/Y spread (inches) — the key defense
+    // against a single bad frame or a PnP "flipped" solution slipping through.
+    public static double limelightMaxSampleSpreadInches = 2.0;
+    // Wait this long (ms) after a successful reset before another can fire.
+    public static double limelightResetCooldownMs = 750;
+    // Goal-tag allow-list (trust filter). DECODE localizes from the GOAL tags only;
+    // the OBELISK motif tags (21/22/23) are randomized and sit off the field, so a
+    // reset must be sourced from a goal tag. When true, a frame is rejected unless it
+    // contains one of the goal IDs below. Backup for a correct goal-only field map —
+    // the .fmap config is the true guarantee; this is defense-in-depth. Verify the
+    // IDs against your loaded field map / game manual before trusting them.
+    public static boolean limelightRequireGoalTag = true;
+    public static int limelightBlueGoalTagId = 20;
+    public static int limelightRedGoalTagId = 24;
+    // Poll rate (Hz) the SDK pulls results at; higher = fresher frames so the
+    // staleness gate passes more often and consensus builds faster in the brief
+    // window the rear camera faces a tag.
+    public static int limelightPollRateHz = 100;
+    // Opt-in pipeline lock. When true, start() switches the Limelight to
+    // limelightPipelineIndex so it always runs the AprilTag/MegaTag pipeline
+    // (guards against booting on the wrong pipeline). Off by default = no change;
+    // set the index to YOUR AprilTag pipeline slot before enabling.
+    public static boolean limelightForcePipeline = false;
+    public static int limelightPipelineIndex = 0;
+    // Absolute field-bounds sanity for a vision reset (inches). A valid field pose
+    // must land within these bounds (a small margin outside 0..144 allows for the
+    // robot origin sitting near a wall). Catches an off-field "wrong solution" that
+    // frame-agreement alone cannot.
+    public static double limelightFieldMinInches = -6.0;
+    public static double limelightFieldMaxInches = 150.0;
+    // Max distance (inches) a snapshot reset may move the pose from odometry. More
+    // generous than limelightMaxResetDistanceInches because the multi-frame
+    // agreement + goal-tag + field-bounds gates already validate the fix, so a large
+    // but trusted correction (exactly what you turn around to get after drift) is
+    // allowed through. Set limelightAllowLargePoseReset=true to bypass entirely.
+    public static double limelightSnapshotMaxJumpInches = 60.0;
 
     /* -------------------------------------------- INTAKE CONSTANTS -------------------------------------------- */
     public static double intakeFastPower = -1;

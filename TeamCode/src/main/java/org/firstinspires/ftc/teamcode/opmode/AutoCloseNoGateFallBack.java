@@ -36,7 +36,7 @@ import static com.pedropathing.ivy.commands.Commands.waitMs;
  * later if you want it to wait on the flywheel instead.
  */
 public abstract class AutoCloseNoGateFallBack extends RobotOpMode {
-    private static final double FIELD_WIDTH = 141.5;
+    private static final double FIELD_WIDTH = Constants.fieldWidthInches;
 
     // Run above the default priority (0) so the spindexer/intake periodics can't
     // override and kill this long Sequential mid-run (see GateIntakeWithFarAuto).

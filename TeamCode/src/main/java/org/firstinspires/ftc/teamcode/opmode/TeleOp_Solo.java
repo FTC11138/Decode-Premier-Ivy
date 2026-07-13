@@ -17,7 +17,7 @@ import static com.pedropathing.ivy.commands.Commands.waitUntil;
 
 @TeleOp(name = "TeleOp", group = "Competition")
 public class TeleOp_Solo extends RobotOpMode {
-    private static final double FIELD_WIDTH = 141.5;
+    private static final double FIELD_WIDTH = Constants.fieldWidthInches;
     private static final double TRIGGER_THRESHOLD = 0.25;
     private static final double MANUAL_INDEX_TRIGGER_THRESHOLD = 0.85;
     private static final long MANUAL_INDEX_LOCKOUT_MS = 500;
@@ -90,6 +90,11 @@ public class TeleOp_Solo extends RobotOpMode {
         // with odometry. Safe to call every loop (no-op when the camera is
         // unavailable or the reading looks suspect).
         llPoseResetter.periodicUpdate(robot.drivetrain);
+        // Rumble to tell the driver a re-localization just landed, so they know the
+        // backward-facing look worked and can stop turning.
+        if (llPoseResetter.consumeResetEvent()) {
+            gamepad1.rumble(300);
+        }
 
         if (robot.turret.autoAimEnabled) {
             TractorBeam.aimTurret(robot.drivetrain.getPose(), robot, Alliance.current);
@@ -110,6 +115,7 @@ public class TeleOp_Solo extends RobotOpMode {
         robot.telemetry.addData("Target Y", Alliance.current.getGoal().getY());
         robot.telemetry.addData("Spindexer Ball Count", robot.spindexer.getBallCount());
         robot.telemetry.addData("LL Pose Reset", llPoseResetter.getStatus());
+        robot.telemetry.addData("LL Reset Debug", llPoseResetter.getDebug());
 
         super.loop();
     }

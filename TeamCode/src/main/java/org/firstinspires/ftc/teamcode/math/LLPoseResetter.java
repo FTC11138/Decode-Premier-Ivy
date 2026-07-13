@@ -4,6 +4,7 @@ import com.pedropathing.ftc.FTCCoordinates;
 import com.pedropathing.geometry.PedroCoordinates;
 import com.pedropathing.geometry.Pose;
 import com.qualcomm.hardware.limelightvision.LLResult;
+import com.qualcomm.hardware.limelightvision.LLResultTypes;
 import com.qualcomm.hardware.limelightvision.Limelight3A;
 import com.qualcomm.robotcore.hardware.HardwareMap;
 
@@ -14,6 +15,10 @@ import org.firstinspires.ftc.robotcore.external.navigation.Position;
 import org.firstinspires.ftc.teamcode.subsystems.Drivetrain;
 import org.firstinspires.ftc.teamcode.util.Constants;
 import org.firstinspires.ftc.teamcode.util.HardwareNames;
+
+import java.util.ArrayDeque;
+import java.util.Arrays;
+import java.util.List;
 
 public class LLPoseResetter {
     // Soft-fusion parameters — tuned conservatively for competition reliability.
@@ -51,11 +56,31 @@ public class LLPoseResetter {
     private double latestFrameTimestamp = -1;
     private double lastProcessedTimestamp = -1;
 
+    // Snapshot-reset sampler state. Each buffered sample is {x, y, wallClockMs}.
+    private final ArrayDeque<double[]> sampleBuffer = new ArrayDeque<>();
+    private long lastResetMs = 0;
+    // Robot heading rate, derived from successive odometry headings, used to reject
+    // frames taken while the robot is spinning (a rear camera smears badly then).
+    private double lastHeadingRad = Double.NaN;
+    private long lastHeadingTimeNs = 0;
+    private double angularVelocityDps = 0;
+    // Distance (inches) to the nearest tag on the last read frame, for telemetry.
+    private double lastTagDistanceInches = -1;
+    // Comma-separated IDs seen on the last read frame, for telemetry/tuning.
+    private String lastSeenTagIds = "-";
+    // Set true for one poll after each successful reset so the opmode can react
+    // (e.g. rumble the gamepad); cleared by consumeResetEvent().
+    private boolean resetEvent = false;
+
     public LLPoseResetter(HardwareMap hardwareMap) {
         camera = hardwareMap.get(Limelight3A.class, HardwareNames.limelight);
     }
 
     public void start() {
+        camera.setPollRateHz(Constants.limelightPollRateHz);
+        if (Constants.limelightForcePipeline) {
+            camera.pipelineSwitch(Constants.limelightPipelineIndex);
+        }
         camera.start();
     }
 
@@ -64,15 +89,29 @@ public class LLPoseResetter {
     }
 
     /**
-     * Called every loop iteration. Applies a gentle pose correction whenever
-     * all quality gates pass for FUSION_MIN_FRAMES consecutive frames.
-     * Safe to call unconditionally — does nothing when camera is unavailable,
-     * robot is moving fast, or the camera reading looks suspect.
+     * Called every loop iteration. Dispatches to either the discrete multi-frame
+     * snapshot reset (default) or the legacy continuous soft-fusion, depending on
+     * Constants.limelightUseSnapshotReset. Safe to call unconditionally — does
+     * nothing when the camera is unavailable or the reading looks suspect.
      */
     public void periodicUpdate(Drivetrain drivetrain) {
         // Feed the freshest robot yaw first so MegaTag2 returns a stable pose.
         updateOrientation(drivetrain);
+        updateAngularVelocity(drivetrain);
 
+        if (Constants.limelightUseSnapshotReset) {
+            snapshotUpdate(drivetrain);
+        } else {
+            softFusionUpdate(drivetrain);
+        }
+    }
+
+    /**
+     * Legacy continuous soft-fusion path (fallback; enabled by setting
+     * Constants.limelightUseSnapshotReset = false). Blends odometry gently toward
+     * the camera every frame once FUSION_MIN_FRAMES consecutive gates pass.
+     */
+    private void softFusionUpdate(Drivetrain drivetrain) {
         Pose cameraPose = getRobotPoseFromCamera();
         if (cameraPose == null) {
             consecutiveGoodFrames = 0;
@@ -147,6 +186,258 @@ public class LLPoseResetter {
         status = String.format("Auto-fusing (Δpos=%.1f in, Δhdg=%.1f°)", positionDelta, headingDiffDeg);
     }
 
+    // ---- Multi-frame snapshot reset (MT2 position-only, auto-triggered) --------
+    // Collects several distinct, quality-gated camera frames, requires them to
+    // agree, then snaps X/Y to their median while KEEPING the IMU/odometry heading
+    // (MegaTag2 cannot independently measure heading). Built for infrequent,
+    // deliberate looks at a tag rather than continuous blending.
+    private void snapshotUpdate(Drivetrain drivetrain) {
+        long nowMs = System.currentTimeMillis();
+
+        // Cooldown so one good look does not fire repeatedly.
+        if (nowMs - lastResetMs < Constants.limelightResetCooldownMs) {
+            status = "Reset cooldown";
+            return;
+        }
+
+        // Motion gates first — a moving/spinning robot smears the reading. These
+        // clear the buffer so consensus only ever forms from a settled robot.
+        double linVel = drivetrain.getVelocityInchesPerSecond();
+        if (linVel > FUSION_MAX_VELOCITY_IPS) {
+            sampleBuffer.clear();
+            status = String.format("Moving %.1f in/s — reset paused", linVel);
+            return;
+        }
+        if (angularVelocityDps > Constants.limelightMaxAngularVelocityDps) {
+            sampleBuffer.clear();
+            status = String.format("Turning %.0f°/s — reset paused", angularVelocityDps);
+            return;
+        }
+
+        // Camera-side gates (valid, tag count, staleness, distance).
+        LLResult result = getGatedResult();
+        if (result == null) {
+            pruneStaleSamples(nowMs);
+            return;
+        }
+
+        // Only consume a genuinely new camera frame (LL ~15 Hz vs loop ~50 Hz), else
+        // the same frame would be counted several times and fake a false consensus.
+        if (latestFrameTimestamp == lastProcessedTimestamp) {
+            return;
+        }
+        lastProcessedTimestamp = latestFrameTimestamp;
+
+        Pose3D mt2 = result.getBotpose_MT2();
+        if (mt2 == null) {
+            status = "No MT2 botpose";
+            return;
+        }
+        Pose cameraPose = convertToPedroPose(mt2);
+
+        sampleBuffer.addLast(new double[]{cameraPose.getX(), cameraPose.getY(), nowMs});
+        pruneStaleSamples(nowMs);
+
+        int needed = Math.max(1, Constants.limelightResetSampleCount);
+        if (sampleBuffer.size() < needed) {
+            status = String.format("Collecting %d/%d", sampleBuffer.size(), needed);
+            return;
+        }
+
+        // Agreement: reject if the buffered samples disagree (outlier / PnP flip).
+        double minX = Double.MAX_VALUE, maxX = -Double.MAX_VALUE;
+        double minY = Double.MAX_VALUE, maxY = -Double.MAX_VALUE;
+        double[] xs = new double[sampleBuffer.size()];
+        double[] ys = new double[sampleBuffer.size()];
+        int i = 0;
+        for (double[] s : sampleBuffer) {
+            xs[i] = s[0];
+            ys[i] = s[1];
+            i++;
+            minX = Math.min(minX, s[0]);
+            maxX = Math.max(maxX, s[0]);
+            minY = Math.min(minY, s[1]);
+            maxY = Math.max(maxY, s[1]);
+        }
+        double spread = Math.max(maxX - minX, maxY - minY);
+        if (spread > Constants.limelightMaxSampleSpreadInches) {
+            sampleBuffer.pollFirst(); // drop oldest, keep trying with fresher frames
+            status = String.format("Samples disagree %.1f in — waiting", spread);
+            return;
+        }
+
+        // Median tolerates a single wild frame better than a mean.
+        double medX = median(xs);
+        double medY = median(ys);
+        Pose odoPose = drivetrain.getPose();
+        // MT2 position-only: correct X/Y, keep the IMU/odometry heading.
+        Pose candidate = new Pose(medX, medY, odoPose.getHeading());
+
+        if (!isReasonableSnapshot(odoPose, candidate)) {
+            sampleBuffer.clear(); // status already set by isReasonableSnapshot
+            return;
+        }
+
+        drivetrain.setPose(candidate);
+        lastResetMs = nowMs;
+        resetEvent = true;
+        sampleBuffer.clear();
+        status = String.format("Snapshot reset → x=%.1f y=%.1f (spread %.1f in)", medX, medY, spread);
+    }
+
+    // Absolute field-bounds + generous jump sanity for the snapshot path. Uses
+    // field-bounds (not just proximity to odometry) as the primary check so a large
+    // but well-agreed correction after real drift is allowed through, while an
+    // off-field wrong solution is still rejected.
+    private boolean isReasonableSnapshot(Pose odoPose, Pose candidate) {
+        if (candidate.getX() < Constants.limelightFieldMinInches
+                || candidate.getX() > Constants.limelightFieldMaxInches
+                || candidate.getY() < Constants.limelightFieldMinInches
+                || candidate.getY() > Constants.limelightFieldMaxInches) {
+            status = String.format("Off-field %.0f,%.0f — rejected", candidate.getX(), candidate.getY());
+            return false;
+        }
+        if (Constants.limelightAllowLargePoseReset) {
+            return true;
+        }
+        double jump = Math.hypot(
+                candidate.getX() - odoPose.getX(),
+                candidate.getY() - odoPose.getY()
+        );
+        if (jump > Constants.limelightSnapshotMaxJumpInches) {
+            status = String.format("Jump %.0f in > %.0f — rejected", jump, Constants.limelightSnapshotMaxJumpInches);
+            return false;
+        }
+        return true;
+    }
+
+    private void pruneStaleSamples(long nowMs) {
+        while (!sampleBuffer.isEmpty()
+                && nowMs - (long) sampleBuffer.peekFirst()[2] > Constants.limelightSampleWindowMs) {
+            sampleBuffer.pollFirst();
+        }
+    }
+
+    // Camera-side quality gates shared by the snapshot path. Returns the raw result
+    // (and advances latestFrameTimestamp) only when the frame is worth using.
+    private LLResult getGatedResult() {
+        LLResult result = camera.getLatestResult();
+        if (result == null) {
+            status = "No Limelight result";
+            return null;
+        }
+        if (!result.isValid()) {
+            status = "Limelight result invalid";
+            return null;
+        }
+
+        int tagCount = result.getBotposeTagCount();
+        if (tagCount < Constants.limelightMinimumTagCount) {
+            status = String.format("Need %d tags, saw %d", Constants.limelightMinimumTagCount, tagCount);
+            return null;
+        }
+
+        long staleness = result.getStaleness();
+        if (staleness > Constants.limelightMaxStalenessMs) {
+            status = String.format("Stale frame %d ms", staleness);
+            return null;
+        }
+
+        // Trust filter: only localize from GOAL tags (20/24), never the randomized,
+        // off-field OBELISK motif tags (21/22/23). Records the seen IDs for telemetry.
+        List<LLResultTypes.FiducialResult> fiducials = result.getFiducialResults();
+        boolean hasGoalTag = false;
+        StringBuilder ids = new StringBuilder();
+        if (fiducials != null) {
+            for (LLResultTypes.FiducialResult f : fiducials) {
+                int id = f.getFiducialId();
+                if (ids.length() > 0) {
+                    ids.append(",");
+                }
+                ids.append(id);
+                if (id == Constants.limelightBlueGoalTagId || id == Constants.limelightRedGoalTagId) {
+                    hasGoalTag = true;
+                }
+            }
+        }
+        lastSeenTagIds = ids.length() > 0 ? ids.toString() : "-";
+        if (Constants.limelightRequireGoalTag && !hasGoalTag) {
+            status = String.format("No goal tag (saw %s)", lastSeenTagIds);
+            return null;
+        }
+
+        double distIn = nearestTagDistanceInches(result);
+        lastTagDistanceInches = distIn;
+        // distIn < 0 means per-tag 3D pose was unavailable — skip the distance gate
+        // rather than silently rejecting every frame.
+        if (distIn >= 0) {
+            if (distIn < Constants.limelightMinTagDistanceInches) {
+                status = String.format("Tag too close %.0f in", distIn);
+                return null;
+            }
+            if (distIn > Constants.limelightMaxTagDistanceInches) {
+                status = String.format("Tag too far %.0f in", distIn);
+                return null;
+            }
+        }
+
+        latestFrameTimestamp = result.getTimestamp() / 1000.0;
+        return result;
+    }
+
+    // Straight-line distance (inches) to the nearest detected tag, or -1 if the
+    // per-tag camera-space pose is unavailable (e.g. Full 3D disabled).
+    private double nearestTagDistanceInches(LLResult result) {
+        List<LLResultTypes.FiducialResult> fiducials = result.getFiducialResults();
+        if (fiducials == null) {
+            return -1;
+        }
+        double best = -1;
+        for (LLResultTypes.FiducialResult f : fiducials) {
+            Pose3D tagInCamera = f.getTargetPoseCameraSpace();
+            if (tagInCamera == null) {
+                continue;
+            }
+            Position p = tagInCamera.getPosition().toUnit(DistanceUnit.INCH);
+            double d = Math.sqrt(p.x * p.x + p.y * p.y + p.z * p.z);
+            if (d <= 0) {
+                continue;
+            }
+            if (best < 0 || d < best) {
+                best = d;
+            }
+        }
+        return best;
+    }
+
+    // Track heading rate from successive odometry headings. A pose reset keeps the
+    // same heading (MT2 position-only), so this can never self-trip on a reset.
+    private void updateAngularVelocity(Drivetrain drivetrain) {
+        Pose pose = drivetrain.getPose();
+        long now = System.nanoTime();
+        if (pose != null && !Double.isNaN(lastHeadingRad)) {
+            double dt = (now - lastHeadingTimeNs) / 1e9;
+            if (dt >= 0.005 && dt < 0.5) {
+                double dHeading = AngleUnit.normalizeRadians(pose.getHeading() - lastHeadingRad);
+                angularVelocityDps = Math.abs(Math.toDegrees(dHeading)) / dt;
+            }
+        }
+        if (pose != null) {
+            lastHeadingRad = pose.getHeading();
+            lastHeadingTimeNs = now;
+        }
+    }
+
+    private static double median(double[] values) {
+        double[] copy = values.clone();
+        Arrays.sort(copy);
+        int n = copy.length;
+        if (n == 0) {
+            return 0;
+        }
+        return (n % 2 == 1) ? copy[n / 2] : (copy[n / 2 - 1] + copy[n / 2]) / 2.0;
+    }
+
     /**
      * Feed the robot's current field yaw to the camera so MegaTag2 can resolve a
      * stable pose. Call this every loop (not just at reset time) so the yaw the
@@ -198,6 +489,21 @@ public class LLPoseResetter {
 
     public String getStatus() {
         return status;
+    }
+
+    // True exactly once after each successful reset. The opmode polls this to give
+    // the driver feedback (e.g. a gamepad rumble) that the re-localization landed.
+    public boolean consumeResetEvent() {
+        boolean event = resetEvent;
+        resetEvent = false;
+        return event;
+    }
+
+    // Compact live-tuning readout: nearest-tag distance, robot turn rate, and how
+    // many frames are currently buffered toward a snapshot reset.
+    public String getDebug() {
+        return String.format("tags=%s dist=%.0fin angVel=%.0f°/s samples=%d",
+                lastSeenTagIds, lastTagDistanceInches, angularVelocityDps, sampleBuffer.size());
     }
 
     private Pose getRobotPoseFromCamera() {

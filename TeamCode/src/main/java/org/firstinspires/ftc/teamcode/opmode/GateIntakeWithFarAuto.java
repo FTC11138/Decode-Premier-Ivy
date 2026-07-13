@@ -43,7 +43,7 @@ import static com.pedropathing.ivy.groups.Groups.deadline;
  * Coordinates are authored for BLUE (left side); RED mirrors them across the field.
  */
 public abstract class GateIntakeWithFarAuto extends RobotOpMode {
-    private static final double FIELD_WIDTH = 141.5;
+    private static final double FIELD_WIDTH = Constants.fieldWidthInches;
     // Fallback: if we only ever get 0-1 balls at the gate, leave after this so the
     // routine always moves on (never sits stuck when balls just aren't coming).
     private static final long GATE_INTAKE_TIMEOUT_MS = 1500;
