@@ -31,6 +31,7 @@ public class TeleOp_Solo extends RobotOpMode {
     private boolean gamepad1StartWasDown = false;
     private boolean gamepad1TouchpadWasDown = false;
     private boolean gamepad1LeftTriggerWasDown = false;
+    private boolean gamepad1LeftBumperWasDown = false;
     private boolean gamepad1RightTriggerWasDown = false;
     private boolean gamepad2LeftTriggerWasDown = false;
     private boolean gamepad2RightTriggerWasDown = false;
@@ -132,6 +133,17 @@ public class TeleOp_Solo extends RobotOpMode {
         }
         gamepad1LeftTriggerWasDown = leftTrigger;
 
+        // Left bumper: hold to reverse the intake (spit balls out); releasing resumes
+        // intaking, mirroring the operator's hold-to-reverse on gamepad2's left trigger.
+//        boolean leftBumper = gamepad1.left_bumper;
+//        if (leftBumper && !gamepad1LeftBumperWasDown) {
+//            robot.intake.reverse().then(robot.spindexer.setIntaking(false)).schedule();
+//        } else if (!leftBumper && gamepad1LeftBumperWasDown) {
+//            intakeEnabled = true;
+//            restoreIntakeState();
+//        }
+//        gamepad1LeftBumperWasDown = leftBumper;
+
         boolean rightTrigger = gamepad1.right_trigger > TRIGGER_THRESHOLD;
         if (rightTrigger && !gamepad1RightTriggerWasDown
                 && robot.shooter.isOn()
@@ -144,11 +156,25 @@ public class TeleOp_Solo extends RobotOpMode {
             scheduleShoot();
         }
 
-        // Fixed-shot test: spin up at 500 tps with the hood fully out (0.81).
+        // X: close interpolation. Triangle: far interpolation. Both spin the shooter
+        // up. shooterFarZone is remembered so the operator's DPad-Up toggle can
+        // re-enable the last zone.
         if (gamepad1.crossWasPressed()) {
-            robot.shooter.setTarget(Constants.shooterTestSpeed);
-            robot.shooter.setHoodPosition(Constants.shooterTestHood);
-            robot.shooter.turnOn();
+            shooterFarZone = false;
+            instant(() -> {
+                robot.shooter.useCloseInterpolation();
+                robot.shooter.turnOn();
+                gamepad1.rumble(250);
+            }).schedule();
+        }
+
+        if (gamepad1.triangleWasPressed()) {
+            shooterFarZone = true;
+            instant(() -> {
+                robot.shooter.useFarInterpolation();
+                robot.shooter.turnOn();
+                gamepad1.rumble(250);
+            }).schedule();
         }
     }
 
@@ -188,23 +214,11 @@ public class TeleOp_Solo extends RobotOpMode {
             }
         }
 
-        if (gamepad2.circleWasPressed()) {
-            shooterFarZone = true;
-            instant(() -> {
-                robot.shooter.useFarInterpolation();
-                robot.shooter.turnOn();
-                gamepad2.rumble(250);
-            }).schedule();
-        }
-
-        if (gamepad2.triangleWasPressed()) {
-            shooterFarZone = false;
-            instant(() -> {
-                robot.shooter.useCloseInterpolation();
-                robot.shooter.turnOn();
-                gamepad2.rumble(250);
-            }).schedule();
-        }
+//        // Circle: emergency stop-all. If the spindexer jams, a shoot/eject sequence
+//        // can hang while holding the spindexer + intake motors, locking the robot up.
+//        if (gamepad2.circleWasPressed()) {
+//            stopAllCommands();
+//        }
 
         // Relocalize to the gate (y=80) only when Square AND X are held together,
         // so it can't be triggered by an accidental single press.
@@ -302,6 +316,23 @@ public class TeleOp_Solo extends RobotOpMode {
         } else {
             robot.intake.off().then(robot.spindexer.setIntaking(false)).schedule();
         }
+    }
+
+    /**
+     * Emergency stop for a jam (e.g. a stuck spindexer). Scheduling stop()/off() at
+     * default priority OVERRIDES and interrupts whatever command chain currently holds
+     * the spindexer/intake motors - a shoot sequence hung on waitUntil(!isMoving), the
+     * full-eject chain, a manual rotation - so the robot can't stay locked up. It then
+     * halts the spindexer (target = current, power 0) and shuts the intake off. Drive,
+     * turret and shooter are untouched. (These are the only motors the teleop command
+     * chains hold, so this stops every command that could get stuck.)
+     */
+    private void stopAllCommands() {
+        robot.spindexer.stop().schedule();
+        robot.intake.off().schedule();
+        robot.spindexer.setIntaking(false).schedule();
+        intakeEnabled = false;
+        gamepad2.rumble(500);
     }
 
     private void updateTurretFromDpad() {

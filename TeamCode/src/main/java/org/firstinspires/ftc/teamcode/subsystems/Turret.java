@@ -63,6 +63,11 @@ public class Turret {
         return targetDegrees;
     }
 
+    /** True when the turret is within toleranceDegrees of its (auto-aim) target. */
+    public boolean atTarget(double toleranceDegrees) {
+        return Math.abs(targetDegrees - getAngleDegrees()) <= toleranceDegrees;
+    }
+
     public void setTargetDegrees(double targetDegrees) {
         if (mode == Mode.HOME) return;
         mode = Mode.POSITION;

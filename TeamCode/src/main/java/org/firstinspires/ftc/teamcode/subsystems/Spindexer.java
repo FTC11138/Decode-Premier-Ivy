@@ -478,6 +478,16 @@ public class Spindexer {
             double intakeCurrent = robot.intake.getIntakeCurrent();
             boolean intakeOn = robot.intake.isOn();
 
+            // Spindexer full (3 balls): a 4th ball being pulled in has nowhere to go
+            // and jams. While we're full and the intake is still running, keep
+            // reversing it to spit that ball back out. Driven directly (not scheduled)
+            // so it also works during auto. More eager than the jam-triggered
+            // fullJamReverse below, which needs a detected jam AND intaking - and
+            // intaking is already false once we reach 3 balls.
+            if (ballCount >= 3 && intakeOn) {
+                robot.intake.requestJamReverse(Constants.intakeJamReverseDurationMs);
+            }
+
             // Time high intake current whenever the motor is on (intaking OR
             // shooting). Start at the trigger threshold, keep timing until current
             // drops below the release threshold (hysteresis) so noise near the
