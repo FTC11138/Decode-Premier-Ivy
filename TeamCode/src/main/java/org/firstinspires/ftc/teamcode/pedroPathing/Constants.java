@@ -109,7 +109,7 @@ public class Constants {
             .encoderResolution(GoBildaPinpointDriver.GoBildaOdometryPods.goBILDA_4_BAR_POD);
 
     public static PathConstraints pathConstraints = new PathConstraints(
-            0.93,
+            0.91,
             0.3,   // velocityConstraint: was 0.1 (nudged up slightly)
             0.3,   // translationalConstraint (in): was 0.1 (slightly looser -> less settle time)
             0.02,  // headingConstraint (rad ~1.1deg): was 0.009 (slightly looser)

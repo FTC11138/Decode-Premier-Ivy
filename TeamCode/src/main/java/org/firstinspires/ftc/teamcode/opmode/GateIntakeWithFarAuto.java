@@ -23,16 +23,20 @@ import static com.pedropathing.ivy.groups.Groups.deadline;
  * Shared logic for the "GateIntakeWithFar" autonomous.
  *
  * Sequence:
- *   1. Drive (26.5,130) -> (68,72) and fire the preload when the shooter is ready.
- *   2. Second row: sweep-intake the curve out to (22,62) and back to (61,78)
- *      (throttled to 2/3 power in the x=22..40 zone), wait briefly, then shoot.
+ *   1. Drive from the start pose -> (74,72) and fire the preload when ready.
+ *   2. Second row: sweep-intake the curve out to (22,62) and back to (67,78)
+ *      (throttled in the ball zone), settle, then shoot.
  *   3. Gate x2: drive out to the gate and intake - leave immediately at 3 balls,
  *      500 ms after reaching 2, or after a 1.5 s fallback (so 0-1 balls still
- *      leaves). The first cycle returns to the shoot start (61,78) so it repeats
- *      cleanly; the last returns to (61,88). Each gate drive is timeout-guarded so
+ *      leaves). The first cycle returns to the shoot start (67,78) so it repeats
+ *      cleanly; the last returns to (67,88). Each gate drive is timeout-guarded so
  *      a follower that doesn't quite reach the gate can't leave the robot stuck.
- *   4. First row: sweep-intake out to (22,88) and back to (48,88), wait briefly,
+ *   4. First row: sweep-intake out to (22,88) and back to (54,88), settle,
  *      shoot, then park at (30,88).
+ *
+ * Shoot poses were shifted +6 in authored x from an earlier revision; each Bezier
+ * control point adjacent to a shoot pose was shifted with it to keep the approach
+ * tangent (angle + speed) into/out of the shoot pose unchanged.
  *
  * The turret pre-aims at the fixed upcoming shoot pose while driving (so it holds
  * steady instead of swinging as the live pose changes), then live-corrects to the
@@ -69,16 +73,21 @@ public abstract class GateIntakeWithFarAuto extends RobotOpMode {
     private static final double GATE_SLOW_DISTANCE_IN = 12.0;
     private static final double GATE_APPROACH_SLOW_POWER = 0.4;
     private static final int GATE_CYCLES = 2;
-    // How long to keep waiting for the shooter to reach target after a path ends
-    // before force-firing anyway. If it's already up to power it fires at once;
-    // this just stops a too-tight readiness tolerance from stalling the routine.
-    private static final long SHOOT_READY_TIMEOUT_MS = 2000;
-    // Safety net for sweep drives, mirroring GATE_DRIVE_TIMEOUT_MS, so a follower
-    // that won't settle at the end of a (reversed) sweep can't block the shot.
-    private static final long SWEEP_TIMEOUT_MS = 5000;
-    // After a pickup path ends, sit still (still intaking) this long so the last
-    // ball has time to seat before we drive off to shoot.
-    private static final long PICKUP_END_WAIT_MS = 300;
+    // How long to keep waiting for the shooter to reach target before force-firing
+    // anyway. The flywheel is kept spun up + interpolated the whole auto, so it's
+    // usually ready within a few hundred ms of arriving; atTarget() fires the shot
+    // as soon as it's ready. This is only the fallback cap. RAISE this if shots come
+    // out weak (fired before the flywheel was up to speed).
+    private static final long SHOOT_READY_TIMEOUT_MS = 1000;
+    // Safety net for sweep drives: with the parametric-end early exit (see
+    // followWithTimeout) the sweep normally finishes as soon as it reaches the end,
+    // so this only caps a follower that never gets there.
+    private static final long SWEEP_TIMEOUT_MS = 2000;
+    // After a pickup path ends, sit still (still intaking) this long BEFORE shooting
+    // so the robot settles onto the shoot pose. The reversed 2nd-row sweep arrives
+    // with momentum and was firing before it settled (accuracy off); this wait fixes
+    // that. Applies to both rows. Also lets the last ball finish seating.
+    private static final long PICKUP_END_WAIT_MS = 500;
     // Hang-guard for the shoot rotation: once fired, wait at most this long for the
     // spindexer to finish turning before moving on, so it can never stall the auto.
     private static final long SHOOT_ROTATE_TIMEOUT_MS = 2500;
@@ -95,6 +104,11 @@ public abstract class GateIntakeWithFarAuto extends RobotOpMode {
     private static final double ROW_SLOW_POWER = 2.0 / 3.0;
     private static final double ROW_SLOW_MIN_X = 22;
     private static final double ROW_SLOW_MAX_X = 40;
+    // Cruise cap for BOTH row-pickup sweeps outside the ball zone, so the whole
+    // pickup runs at 0.7 power for cleaner collection (was full 1.0). The ball zone
+    // above is a touch slower still (ROW_SLOW_POWER). Restored to 1.0 after each
+    // pickup so the gate/preload/park drives stay full speed.
+    private static final double ROW_PICKUP_MAX_POWER = 0.7;
     // Run the whole auto above the default priority (0). The Spindexer periodic
     // schedules jam-recovery commands that require the same spindexer/intake motors
     // this Sequential holds; at equal priority those would OVERRIDE and kill the
@@ -109,7 +123,7 @@ public abstract class GateIntakeWithFarAuto extends RobotOpMode {
     // convention). Applied via Constants.turretAimOffsetDegrees during auto and
     // reset to 0 at the end so it doesn't leak into TeleOp. The preload shot needs
     // more right bias than the rest.
-    private static final double FIRST_SHOT_TURRET_OFFSET_DEGREES = -14.0; // 14 deg right
+    private static final double FIRST_SHOT_TURRET_OFFSET_DEGREES = -10.0; // 14 deg right
     private static final double REST_SHOT_TURRET_OFFSET_DEGREES = -3.0;   // 3 deg right
     // RED: after mirroring the bias to the left, add this much MORE left. Net RED
     // offsets = +19 (first) / +8 (rest), i.e. left. See turretOffset().
@@ -132,8 +146,8 @@ public abstract class GateIntakeWithFarAuto extends RobotOpMode {
     private PathChain startToShoot;
     private PathChain secondRowSweep;
     private PathChain shootToGate;
-    private PathChain gateToShoot;      // normal gate return -> (61,78) shoot start
-    private PathChain gateToShootFinal; // last cycle's return -> (61,88) first-row start
+    private PathChain gateToShoot;      // normal gate return -> (67,78) shoot start
+    private PathChain gateToShootFinal; // last cycle's return -> (67,88) first-row start
     private PathChain firstRowSweep;
     private PathChain finalPark;
 
@@ -170,6 +184,7 @@ public abstract class GateIntakeWithFarAuto extends RobotOpMode {
         robot.shooter.useInterpolation();
         robot.shooter.turnOn();
 
+<<<<<<< Updated upstream
         CommandBuilder auto = instant(() -> aimTargetPose = preloadShootPose())
                 .then(followWithTimeout(startToShoot, SWEEP_TIMEOUT_MS))
                 .then(shootWhenReady())
@@ -177,15 +192,27 @@ public abstract class GateIntakeWithFarAuto extends RobotOpMode {
                 // (flipped for RED).
                 .then(instant(() -> Constants.turretAimOffsetDegrees = turretOffset(REST_SHOT_TURRET_OFFSET_DEGREES)))
                 .then(instant(() -> aimTargetPose = pose(61, 78, 246)))
+=======
+        CommandBuilder auto = instant(() -> aimTargetPose = pose(74, 72, 270))
+                .then(followWithTimeout(startToShoot, SWEEP_TIMEOUT_MS))
+                .then(shootWhenReady())
+                // Preload done: drop to the smaller right bias for every other shot.
+                .then(instant(() -> Constants.turretAimOffsetDegrees = REST_SHOT_TURRET_OFFSET_DEGREES))
+                .then(instant(() -> aimTargetPose = pose(67, 78, 246)))
+>>>>>>> Stashed changes
                 .then(rowPickup(secondRowSweep))
                 .then(shootWhenReady());
         for (int i = 0; i < GATE_CYCLES; i++) {
             boolean last = i == GATE_CYCLES - 1;
             auto = auto.then(gateCycle(
                     last ? gateToShootFinal : gateToShoot,
-                    last ? pose(61, 88, 180) : pose(61, 78, 180)));
+                    last ? pose(67, 88, 180) : pose(67, 78, 180)));
         }
+<<<<<<< Updated upstream
         auto = auto.then(instant(() -> aimTargetPose = pose(51, 88, 180)))
+=======
+        auto = auto.then(instant(() -> aimTargetPose = pose(54, 88, 180)))
+>>>>>>> Stashed changes
                 .then(rowPickup(firstRowSweep))
                 .then(shootWhenReady())
                 // Last shot done: send the turret home (0) as we start driving off,
@@ -223,16 +250,32 @@ public abstract class GateIntakeWithFarAuto extends RobotOpMode {
     }
 
     /**
+<<<<<<< Updated upstream
      * Follow a path, finishing as soon as the robot reaches the path's parametric end
      * OR timeoutMs elapses. The parametric-end check advances the routine the instant
      * the robot arrives instead of sitting out the timeout while the follower settles -
      * that settle wait is what made it look "stuck" between paths. Every path drive
      * goes through this, so all of them are timeout-guarded.
+=======
+     * Follow a path, finishing the instant ANY of these is true: the robot reaches
+     * the path's parametric end (follower.atParametricEnd()), the follower reports
+     * done, or timeoutMs elapses.
+     *
+     * The parametric-end check is what makes this snappy. Follow.done() is
+     * !follower.isBusy(), and isBusy only clears AFTER the path's end tolerances (or
+     * the per-path end timeout) are satisfied while automaticHoldEnd holds the pose -
+     * i.e. it waits for the robot to settle. atParametricEnd flips true as soon as
+     * the robot reaches the end of the path, so the sequence advances right away and
+     * the follower keeps holding/settling the pose into the next step (the shooter is
+     * still spinning up, the turret still aiming). timeoutMs stays as the safety net
+     * for a follower that never reaches the end at all.
+>>>>>>> Stashed changes
      */
     private Command followWithTimeout(PathChain path, long timeoutMs) {
         return robot.drivetrain.followPath(path)
                 .raceWith(waitUntil(() -> robot.drivetrain.follower.atParametricEnd()))
                 .raceWith(waitMs(timeoutMs));
+<<<<<<< Updated upstream
     }
 
     /**
@@ -242,12 +285,15 @@ public abstract class GateIntakeWithFarAuto extends RobotOpMode {
      */
     private static Command noOp() {
         return instant(() -> {});
+=======
+>>>>>>> Stashed changes
     }
 
     private Command gateCycle(PathChain returnPath, Pose shootPose) {
         return instant(() -> aimTargetPose = shootPose)
                 .then(robot.intake.on())
                 .then(robot.spindexer.setIntaking(true))
+<<<<<<< Updated upstream
                 // Drive toward the gate but PAUSE at the first gate position for a
                 // beat so the gate can finish opening, then continue in to the intake
                 // position. shootToGate stays one pathchain: we stop the drive on
@@ -261,6 +307,8 @@ public abstract class GateIntakeWithFarAuto extends RobotOpMode {
                 .then(instant(() -> robot.drivetrain.follower.setMaxPower(1.0)))
                 .then(instant(() -> robot.drivetrain.follower.holdPoint(robot.drivetrain.getPose())))
                 .then(waitMs(GATE_FIRST_POS_HOLD_MS))
+=======
+>>>>>>> Stashed changes
                 .then(followWithTimeout(shootToGate, GATE_DRIVE_TIMEOUT_MS))
                 .then(instant(() -> {
                     gateIntakeStartMs = System.currentTimeMillis();
@@ -367,13 +415,27 @@ public abstract class GateIntakeWithFarAuto extends RobotOpMode {
                         followWithTimeout(path, SWEEP_TIMEOUT_MS),
                         slowZoneControl()))
                 .then(instant(() -> robot.drivetrain.follower.setMaxPower(1.0)))
-                // Wait at the end of the pickup (still intaking) so the last ball seats.
+                // Wait at the end of the pickup (still intaking) so the last ball seat s.
                 .then(waitMs(PICKUP_END_WAIT_MS))
                 // Keep intaking on the way to the shot so we keep grabbing balls;
                 // only stop if we're already full (3 balls).
                 .then(conditional(() -> robot.spindexer.getBallCount() >= 3,
                         robot.intake.off().then(robot.spindexer.setIntaking(false)),
                         noOp()));
+<<<<<<< Updated upstream
+=======
+    }
+
+    /**
+     * A no-op that COMPLETES immediately. Do not use Command.NOOP here: its done()
+     * is a constant false, so a Sequential/Conditional that waits on it hangs
+     * forever. That is precisely what stranded the robot at the gate (never drove
+     * back) and at the shoot pose (never fired) whenever the ball count was < 3 and
+     * the conditional's false branch was taken.
+     */
+    private static Command noOp() {
+        return instant(() -> {});
+>>>>>>> Stashed changes
     }
 
     /**
@@ -381,7 +443,8 @@ public abstract class GateIntakeWithFarAuto extends RobotOpMode {
      * (slow) zone, else full power. Runs for the whole sweep (deadline'd to it).
      */
     private Command slowZoneControl() {
-        return infinite(() -> robot.drivetrain.follower.setMaxPower(inSlowZone() ? ROW_SLOW_POWER : 1.0));
+        return infinite(() -> robot.drivetrain.follower.setMaxPower(
+                inSlowZone() ? ROW_SLOW_POWER : ROW_PICKUP_MAX_POWER));
     }
 
     /** True while the robot's BLUE-authored x is inside the ball (slow) zone. */
@@ -418,6 +481,7 @@ public abstract class GateIntakeWithFarAuto extends RobotOpMode {
     // ----- Paths ------------------------------------------------------------
 
     private void buildPaths() {
+<<<<<<< Updated upstream
         // Same curve both sides (control stays straight above (64,72) for a vertical
         // drop in). BLUE keeps the tangential heading (ends facing ~270). RED instead
         // interpolates to a fixed heading of 0 at the preload: the RED-mirrored 270
@@ -441,13 +505,34 @@ public abstract class GateIntakeWithFarAuto extends RobotOpMode {
         }
         secondRowSweep = robot.drivetrain.follower.pathBuilder()
                 .addPath(new BezierCurve(pose(64, 72, 270), pose(59.77, 62, 180), pose(22, 62, 180)))
+=======
+        startToShoot = robot.drivetrain.follower.pathBuilder()
+                // Tangential heading. The control point sits straight above the shoot
+                // point so the drop INTO (74,72) stays vertical (270 deg) - that
+                // arrival tangent is what we preserve. Because the shoot point moved
+                // +6 in x (control moved with it), the departure from the start pose
+                // is now ~326 deg vs the 322.5 deg start heading; the follower absorbs
+                // that small initial correction over the long curve.
+                .addPath(new BezierCurve(
+                        pose(27.6546, 131.6139, 322.5094),
+                        pose(74, 100.65, 270),
+                        pose(74, 72, 270)))
                 .setTangentHeadingInterpolation()
-                .addPath(new BezierCurve(pose(22, 62, 180), pose(50, 62, 180), pose(61, 78, 180)))
+                .build();
+        secondRowSweep = robot.drivetrain.follower.pathBuilder()
+                .addPath(new BezierCurve(pose(74, 72, 270), pose(69.77, 62, 180), pose(22, 62, 180)))
+>>>>>>> Stashed changes
+                .setTangentHeadingInterpolation()
+                .addPath(new BezierCurve(pose(22, 62, 180), pose(56, 62, 180), pose(67, 78, 180)))
                 .setTangentHeadingInterpolation()
                 .setReversed()
                 .build();
         shootToGate = robot.drivetrain.follower.pathBuilder()
+<<<<<<< Updated upstream
                 .addPath(new BezierCurve(pose(61, 78, 180), pose(49, 65, 160), pose(gate1X, gate1Y, 160)))
+=======
+                .addPath(new BezierCurve(pose(67, 78, 180), pose(55, 65, 160), pose(23, 68, 160)))
+>>>>>>> Stashed changes
                 .setTangentHeadingInterpolation()
                 // 173.42 = tangent angle at the end of the curve above, so the
                 // linear segment starts exactly where the tangent left off and
@@ -455,28 +540,44 @@ public abstract class GateIntakeWithFarAuto extends RobotOpMode {
                 .addPath(new BezierLine(pose(gate1X, gate1Y, 173.42), pose(17, 58, 110)))
                 .setLinearHeadingInterpolation(hdg(173.42), hdg(110))
                 .build();
-        // Normal gate return: back to the shoot START (61,78) so every cycle lines
+        // Normal gate return: back to the shoot START (67,78) so every cycle lines
         // up and the next shootToGate begins from the same place. Curved via
-        // (55,55) but heading stays linear.
+        // (61,55) but heading stays linear.
         gateToShoot = robot.drivetrain.follower.pathBuilder()
+<<<<<<< Updated upstream
                 .addPath(new BezierCurve(pose(17, 58, 110), pose(55, 55, 145), pose(61, 78, 180)))
+=======
+                .addPath(new BezierCurve(pose(17, 57, 110), pose(61, 55, 145), pose(67, 78, 180)))
+>>>>>>> Stashed changes
                 .setLinearHeadingInterpolation(hdg(110), hdg(180))
                 .build();
-        // Last gate cycle only: return to the file's end position (61,88), which
-        // is where the first-row sweep begins.
+        // Last gate cycle only: return to (67,88), which is where the first-row
+        // sweep begins.
         gateToShootFinal = robot.drivetrain.follower.pathBuilder()
+<<<<<<< Updated upstream
                 .addPath(new BezierCurve(pose(17, 58, 110), pose(55, 55, 145), pose(61, 88, 180)))
+=======
+                .addPath(new BezierCurve(pose(17, 57, 110), pose(61, 55, 145), pose(67, 88, 180)))
+>>>>>>> Stashed changes
                 .setLinearHeadingInterpolation(hdg(110), hdg(180))
                 .build();
         firstRowSweep = robot.drivetrain.follower.pathBuilder()
-                .addPath(new BezierLine(pose(61, 88, 180), pose(22, 88, 180)))
+                .addPath(new BezierLine(pose(67, 88, 180), pose(22, 88, 180)))
                 .setTangentHeadingInterpolation()
+<<<<<<< Updated upstream
                 .addPath(new BezierLine(pose(22, 88, 180), pose(51, 88, 180)))
+=======
+                .addPath(new BezierLine(pose(22, 88, 180), pose(54, 88, 180)))
+>>>>>>> Stashed changes
                 .setTangentHeadingInterpolation()
                 .setReversed()
                 .build();
         finalPark = robot.drivetrain.follower.pathBuilder()
+<<<<<<< Updated upstream
                 .addPath(new BezierLine(pose(51, 88, 180), pose(30, 88, 180)))
+=======
+                .addPath(new BezierLine(pose(54, 88, 180), pose(30, 88, 180)))
+>>>>>>> Stashed changes
                 .setTangentHeadingInterpolation()
                 .build();
     }

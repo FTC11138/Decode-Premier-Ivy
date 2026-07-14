@@ -78,9 +78,7 @@ public class LLPoseResetter {
             consecutiveGoodFrames = 0;
             return;
         }
-
         Pose odoPose = drivetrain.getPose();
-
         // Gate 1: robot must be moving slowly enough for camera to be accurate.
         if (drivetrain.getVelocityInchesPerSecond() > FUSION_MAX_VELOCITY_IPS) {
             consecutiveGoodFrames = 0;
@@ -124,14 +122,12 @@ public class LLPoseResetter {
         // lastProcessedTimestamp so the time-based blend below can use it.
         double frameDt = latestFrameTimestamp - lastProcessedTimestamp;
         lastProcessedTimestamp = latestFrameTimestamp;
-
         // All gates passed — accumulate toward required consensus.
         consecutiveGoodFrames++;
         if (consecutiveGoodFrames < FUSION_MIN_FRAMES) {
             status = String.format("Building consensus %d/%d", consecutiveGoodFrames, FUSION_MIN_FRAMES);
             return;
         }
-
         // Soft correction: blend odometry toward the camera using a frame-rate-
         // independent factor. alpha = 1 - e^(-dt/tau) gives the same real-world
         // correction speed whether the camera runs at 15 or 50 Hz, so changing
@@ -251,7 +247,6 @@ public class LLPoseResetter {
             );
             return false;
         }
-
         if (headingErrorDegrees > Constants.limelightMaxResetHeadingDegrees) {
             status = String.format(
                     "Rejected LL reset: %.1f deg jump > %.1f",
@@ -260,7 +255,6 @@ public class LLPoseResetter {
             );
             return false;
         }
-
         return true;
     }
 

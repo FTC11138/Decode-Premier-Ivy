@@ -149,16 +149,13 @@ public abstract class AutoCloseNoGateFallBack extends RobotOpMode {
     private Command intakeOn() {
         return robot.intake.on().then(robot.spindexer.setIntaking(true));
     }
-
     private Command intakeOff() {
         return robot.intake.off().then(robot.spindexer.setIntaking(false));
     }
-
     /** Follow a path but give up after timeoutMs so a stuck follower can't stall the auto. */
     private Command followWithTimeout(PathChain path, long timeoutMs) {
         return robot.drivetrain.followPath(path).raceWith(waitMs(timeoutMs));
     }
-
     private Command followWithTimeout(PathChain path, long timeoutMs, double maxPower) {
         return robot.drivetrain.followPath(path, maxPower).raceWith(waitMs(timeoutMs));
     }
