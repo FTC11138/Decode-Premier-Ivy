@@ -41,6 +41,15 @@ public class Spindexer {
     private boolean autoIndexArmed = true;
     private int ballCount = 0;
 
+    // Auto-only shoot behavior: while true, the shoot rotation is in progress and ball
+    // detection / auto-indexing is suppressed until the FULL rotation completes, so the
+    // 480-deg volley fully clears before the sensor starts counting the next collection.
+    private boolean autoMode = false;
+    private boolean shootDetectBlock = false;
+    private double shootBlockTargetTicks = 0;
+    // Auto shoot rotates a touch slower than teleop for a cleaner, more reliable feed.
+    private static final double AUTO_SHOOT_POWER = 0.85;
+
     private boolean intaking = false;
     private boolean shooting = false;
     private boolean intakeStuck = false;
@@ -88,8 +97,14 @@ public class Spindexer {
         return instant(() -> {
             intaking = false;
             shooting = true;
+            // Full revolution + 120 deg (~480 deg) so every seated artifact is pushed out.
             moveRelative(-(Constants.spindexerTicksPerRevolution + ticks120Degrees()));
             ballCount = 0;
+            // In auto, hold off ball detection until this whole rotation completes.
+            if (autoMode) {
+                shootDetectBlock = true;
+                shootBlockTargetTicks = targetPositionTicks;
+            }
         }).requiring(spindexerMotor);
     }
 
@@ -223,6 +238,11 @@ public class Spindexer {
 
     public int getBallCount() {
         return ballCount;
+    }
+
+    /** Enable auto-only shoot behavior (detection suppressed until the volley rotation finishes). */
+    public void setAutoMode(boolean auto) {
+        this.autoMode = auto;
     }
 
     public boolean isShooting() {
@@ -378,6 +398,12 @@ public class Spindexer {
                 1.0
         );
 
+        // Auto shoot: cap the volley rotation power (slower, cleaner feed). Teleop is
+        // unaffected (autoMode false), and it only applies during the shoot rotation.
+        if (autoMode && shootDetectBlock) {
+            power = Range.clip(power, -AUTO_SHOOT_POWER, AUTO_SHOOT_POWER);
+        }
+
         if (Constants.spindexerMotorReversed) {
             power *= -1.0;
         }
@@ -453,6 +479,16 @@ public class Spindexer {
                 autoIndexArmed = true;
             }
 
+            // Auto shoot: keep detection blocked until the full ~480-deg volley rotation
+            // has completed (position has reached the shoot target), so the sensor only
+            // starts counting the next collection AFTER the shot is done.
+            if (shootDetectBlock
+                    && Math.abs(shootBlockTargetTicks - getCurrentPosition()) <= deadbandTicks()) {
+                shootDetectBlock = false;
+                autoIndexArmed = false;             // require a fresh ball after the volley
+                ignoreSensor(Constants.sensorWait);
+            }
+
             // Index a fresh ball: a ball is seated, we are armed (the sensor has
             // cleared since the last turn), and it is safe to act. Both timers are
             // anchored to the real rotation - the ignore debounce starts when the
@@ -463,6 +499,7 @@ public class Spindexer {
                     && intaking
                     && !ignoreSensor
                     && !moving
+                    && !shootDetectBlock
                     && !autoLoadPending
                     && ballCount < 3
                     && rotationLockoutElapsed(Constants.spindexerRotationLockoutMs)) {

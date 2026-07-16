@@ -8,6 +8,8 @@ import com.pedropathing.ivy.CommandBuilder;
 import com.pedropathing.paths.PathChain;
 
 import org.firstinspires.ftc.teamcode.math.TractorBeam;
+import org.firstinspires.ftc.teamcode.math.TurretLocation;
+import org.firstinspires.ftc.teamcode.math.WaveLength;
 import org.firstinspires.ftc.teamcode.robot.Alliance;
 import org.firstinspires.ftc.teamcode.robot.RobotOpMode;
 import org.firstinspires.ftc.teamcode.util.Constants;
@@ -18,10 +20,11 @@ import static com.pedropathing.ivy.commands.Commands.instant;
 import static com.pedropathing.ivy.commands.Commands.waitMs;
 import static com.pedropathing.ivy.commands.Commands.waitUntil;
 import static com.pedropathing.ivy.groups.Groups.deadline;
+import static com.pedropathing.ivy.groups.Groups.parallel;
 
 /**
  * "Far zone" autonomous: shoot from the far launch zone, feed off the last row and
- * then cycle the corner stack three times.
+ * then cycle the corner stack twice.
  *
  * Sequence:
  *   1. Preload: the robot starts ON the far shoot point (65,8.5) and fires the
@@ -37,10 +40,9 @@ import static com.pedropathing.ivy.groups.Groups.deadline;
  *      stays in range. Driving IN toward the stack (authored x 24..14) is half power;
  *      the rest is full. Repeated CORNER_CYCLES times.
  *
- * The turret pre-aims at the fixed upcoming shoot pose while driving (so it holds
- * steady instead of swinging as the live pose changes), then live-corrects to the
- * actual pose once within AIM_LIVE_CORRECT_DISTANCE of the shot. The flywheel stays
- * spun up on the far interpolation table the whole run.
+ * The turret auto-aims normally: every loop it tracks the goal from the live robot pose.
+ * The shot still waits until the chassis has settled onto the shoot heading (chassisSettled)
+ * before firing. The flywheel stays spun up on the far interpolation table the whole run.
  *
  * Coordinates are authored for BLUE; RED mirrors them across the field
  * (x -> FIELD_WIDTH - x, heading -> pi - heading) via point()/pose()/hdg(), the
@@ -57,13 +59,16 @@ public abstract class FarZoneAuto extends RobotOpMode {
     private static final int AUTO_PRIORITY = 1;
 
     // How many times to run the corner-stack cycle after the row shot.
-    private static final int CORNER_CYCLES = 3;
+    private static final int CORNER_CYCLES = 2;
 
     // Drive powers: full everywhere except two half-speed collection windows, both
     // applied by position on ONE continuous chain (so the follower never decelerates at
     // a seam) rather than by splitting the drive, which would cost a stop each seam.
     private static final double FULL_POWER = 1.0;
     private static final double HALF_POWER = 0.5;
+    // Corner-stack feed power. Faster than the row's HALF_POWER so the cycle isn't
+    // sluggish, but still throttled below full so the intake actually seats the stack.
+    private static final double CORNER_INTAKE_POWER = 0.75;
     // Row slow band: the row is the only part of the row excursion above this y, so it
     // cleanly marks where to drop to half power. y is never mirrored (only x is).
     private static final double ROW_SLOW_MIN_Y = 32.0;
@@ -77,20 +82,28 @@ public abstract class FarZoneAuto extends RobotOpMode {
     // turnaround doesn't flicker the throttle.
     private static final double INWARD_EPSILON_IN = 0.05;
 
-    // Turret aim bias, held for the whole run (never retargeted mid-routine). Authored
-    // for BLUE and mirrored for RED (see turretOffset()) so both sides get the same
-    // physical correction; positive is left in this codebase's convention. Reset to 0 at
-    // the end so it can't leak into TeleOp.
-    private static final double TURRET_AIM_OFFSET_DEGREES = -2.0;
+    // Per-shot turret aim bias (degrees), authored for BLUE and mirrored for RED (see
+    // turretOffset()). Convention: POSITIVE = left, NEGATIVE = right. Reset to 0 at the
+    // end so it can't leak into TeleOp. Both shots are biased RIGHT; the preload the most,
+    // the row/gate shots a little less right. Adjust the magnitudes from field results.
+    private static final double FIRST_SHOT_TURRET_OFFSET_DEGREES = -6.0;  // preload: dialed in, keep
+    private static final double REST_SHOT_TURRET_OFFSET_DEGREES = -2.0;   // row+gate: nudged left from -4
 
     // Generous per-drive safety timeout: only fires if a follower gets stuck. Normal
     // drives finish well under it because followWithTimeout also races the follower's
     // parametric end and advances the instant the robot arrives.
     private static final long DRIVE_TIMEOUT_MS = 5000;
 
-    // After a pickup path ends, sit still (still intaking) this long so the last ball
-    // has time to seat/index before we fire.
-    private static final long PICKUP_SEAT_MS = 300;
+    // At the end of each pickup/cycle path the robot sits still (still intaking) this
+    // long before firing, so it fully settles onto the shoot pose and the last ball
+    // seats/indexes.
+    private static final long PICKUP_SEAT_MS = 250;
+    // On arriving at a shoot pose (end of a return path), reverse the intake this long to
+    // spit out any 4th artifact wedged at the intake, so we never fire with 4 loaded.
+    private static final long EJECT_REVERSE_MS = 300;
+    // Pause at the end of the row collection sweep (still intaking) so the swept artifacts
+    // seat before the robot backs out to shoot.
+    private static final long ROW_SWEEP_END_WAIT_MS = 300;
 
     // Shot gating: fire only once the flywheel is up to speed AND the robot is within
     // SHOOT_POSE_TOLERANCE_IN of the shoot pose AND the turret has actually aimed - so
@@ -102,18 +115,26 @@ public abstract class FarZoneAuto extends RobotOpMode {
     // velocity), so give it a longer ready cap before force-firing. Every later shot
     // keeps SHOOT_READY_TIMEOUT_MS because the flywheel is already near speed.
     private static final long FIRST_SHOOT_READY_TIMEOUT_MS = 3000;
-    private static final long SHOOT_ROTATE_TIMEOUT_MS = 2500;
+    // After firing, wait for the spindexer to finish its rotation - i.e. the whole volley
+    // has cleared - before moving, capped so a stuck spindexer can't stall the routine.
+    private static final long SHOOT_FIRE_TIMEOUT_MS = 1500;
     private static final double SHOOT_POSE_TOLERANCE_IN = 5.0;
     private static final double TURRET_AIM_TOLERANCE_DEG = 5.0;
-
-    // The turret pre-aims at the fixed upcoming shoot pose while driving, and only
-    // switches to live auto-aim on the ACTUAL pose once the robot is within this many
-    // inches of the shot - close enough that the correction is small/fast.
-    private static final double AIM_LIVE_CORRECT_DISTANCE = 3.0;
+    // The shot waits until the chassis has settled to within this many degrees of the
+    // shoot heading (chassisSettled()) instead of firing while the chassis is still turning.
+    private static final double HEADING_SETTLE_TOLERANCE_DEG = 6.0;
+    // Flywheel pre-spin: within this many inches of the shoot pose the shooter latches to
+    // the interpolated shoot-pose (far) velocity/hood instead of interpolating off the
+    // live pose. The shoot pose is the FARTHEST point in the routine, so the flywheel
+    // would otherwise be spun DOWN from collecting closer in and have to spin back up on
+    // arrival; latching on the run-in gets it up to speed before the shot. Kept below the
+    // corner far points (~40"), so it only engages on the final approach - collection
+    // stays on live far interpolation.
+    private static final double APPROACH_SPINUP_DISTANCE = 30.0;
 
     // Start heading = the tangent at the start of the first curve (straight up toward
     // the first control point (65,35.5)), so the robot never has to rotate to begin.
-    private static final double START_HEADING_DEG = 90;
+    private static final double START_HEADING_DEG = -180;
     // Heading the robot arrives at the shoot point with. Two values because the row
     // return and the corner return arrive facing different ways; the turret pre-aims at
     // the matching one so it never has to swing on arrival. Row seg 3 ends ~128 deg; the
@@ -126,8 +147,10 @@ public abstract class FarZoneAuto extends RobotOpMode {
 
     private boolean mirror;
 
-    private PathChain rowRun;       // segs 1-3 chained: start -> row -> shoot (one drive)
-    private PathChain cornerCycle;  // segs 4-6: shoot -> corner stack -> shoot (looped)
+    private PathChain rowCollect;   // start -> row start -> sweep end (approach+sweep, continuous)
+    private PathChain rowReturn;    // sweep end -> shoot (reversed tangent), after the sweep-end wait
+    private PathChain cornerOut;    // shoot -> top -> second point (the intake sweep)
+    private PathChain cornerReturn; // second point -> shoot (the return, after the dwell)
 
     // The pose the turret should pre-aim at for the upcoming shot. loop() aims at this
     // fixed pose while far away, then live-corrects to the real pose near it.
@@ -148,7 +171,9 @@ public abstract class FarZoneAuto extends RobotOpMode {
         robot.turret.setStartingAngle(Constants.turretHomedAngleDegrees);
         robot.turret.enableAutoAim();
         // Constant aim bias for the whole run (mirrored for RED). Held, never retargeted.
-        Constants.turretAimOffsetDegrees = turretOffset();
+        Constants.turretAimOffsetDegrees = turretOffset(FIRST_SHOT_TURRET_OFFSET_DEGREES);
+        // Auto shoot: suppress ball detection until each ~480-deg volley rotation finishes.
+        robot.spindexer.setAutoMode(true);
 
         buildPaths();
     }
@@ -163,18 +188,25 @@ public abstract class FarZoneAuto extends RobotOpMode {
         // ----- preload (already sitting on the shoot point) -----
         CommandBuilder auto = instant(() -> aimTargetPose = startPose())
                 .then(shootWhenReady(FIRST_SHOOT_READY_TIMEOUT_MS))
+                // Preload fired: switch to the rest-shot turret bias for every other shot.
+                .then(instant(() -> Constants.turretAimOffsetDegrees =
+                        turretOffset(REST_SHOT_TURRET_OFFSET_DEGREES)))
                 // ----- last row (segs 1-3, one continuous drive) -----
                 .then(instant(() -> aimTargetPose = shootPoseRow()))
                 // Intake on before the run so it is fully spun up entering the row.
                 .then(intakeOn())
-                // One flat-out drive; slowZoneControl throttles it to half power only
-                // while in the row band, so there is no stop between approach, sweep,
-                // and return. Restore full power once the drive is done.
+                // Collect: approach + sweep in one continuous drive; slowZoneControl
+                // throttles to half power in the row band. No stop between approach and
+                // sweep. Restore full power after.
                 .then(deadline(
-                        followWithTimeout(rowRun, DRIVE_TIMEOUT_MS, FULL_POWER),
+                        followWithTimeout(rowCollect, DRIVE_TIMEOUT_MS, FULL_POWER),
                         slowZoneControl()))
                 .then(instant(() -> robot.drivetrain.follower.setMaxPower(FULL_POWER)))
-                .then(seatThenShoot());
+                // Pause at the end of the sweep so the swept artifacts seat.
+                .then(waitMs(ROW_SWEEP_END_WAIT_MS))
+                // Back out to the shoot point, then eject a possible 4th and fire.
+                .then(followWithTimeout(rowReturn, DRIVE_TIMEOUT_MS, FULL_POWER))
+                .then(ejectThenShoot());
 
         // ----- corner stack, CORNER_CYCLES times, all from the same shoot point -----
         // Pre-aim at the corner return heading for the rest of the run.
@@ -183,14 +215,22 @@ public abstract class FarZoneAuto extends RobotOpMode {
             auto = auto
                     // rotateShootCW() cleared intaking on the last shot, so re-arm it.
                     .then(intakeOn())
-                    // One continuous in-and-out drive; cornerSlowControl drops it to
-                    // half power only while heading INWARD through the stack band, full
-                    // power on the way back out. Restore full power once the drive ends.
+                    // Intake pass into the stack; cornerSlowControl drops to the corner
+                    // feed power while heading INWARD through the stack band. Full after.
                     .then(deadline(
-                            followWithTimeout(cornerCycle, DRIVE_TIMEOUT_MS, FULL_POWER),
+                            followWithTimeout(cornerOut, DRIVE_TIMEOUT_MS, FULL_POWER),
                             cornerSlowControl()))
                     .then(instant(() -> robot.drivetrain.follower.setMaxPower(FULL_POWER)))
-                    .then(seatThenShoot());
+                    // DWELL at the end of the intake (still intaking) so the collected
+                    // balls seat - this is the only dwell in the cycle; there is none
+                    // after firing.
+                    .then(waitMs(PICKUP_SEAT_MS))
+                    .then(conditional(() -> robot.spindexer.getBallCount() >= 3,
+                            intakeOff(), noOp()))
+                    // Return to the shoot point and fire; the shot moves straight into
+                    // the next cycle with no post-fire wait.
+                    .then(followWithTimeout(cornerReturn, DRIVE_TIMEOUT_MS, FULL_POWER))
+                    .then(ejectThenShoot());
         }
 
         // ----- done: home the turret, stop collection, stop the flywheel -----
@@ -210,15 +250,28 @@ public abstract class FarZoneAuto extends RobotOpMode {
     @Override
     public void loop() {
         Pose current = robot.drivetrain.getPose();
-        if (aimTargetPose != null && current != null) {
-            double dx = aimTargetPose.getX() - current.getX();
-            double dy = aimTargetPose.getY() - current.getY();
-            boolean nearShot = Math.hypot(dx, dy) <= AIM_LIVE_CORRECT_DISTANCE;
-            // Far: hold the pre-computed angle for the shot pose (no swinging).
-            // Near: live-correct to the actual pose for a small, fast fix.
-            TractorBeam.aimTurret(nearShot ? current : aimTargetPose, robot, Alliance.current);
-        } else if (robot.turret.autoAimEnabled && current != null) {
-            TractorBeam.aimTurret(current, robot, Alliance.current);
+        if (current != null) {
+            // Turret: normal continuous auto-aim - always track the goal from the live pose
+            // (nothing special). Gated on autoAimEnabled so the end-of-auto turret home isn't
+            // overridden.
+            if (robot.turret.autoAimEnabled) {
+                TractorBeam.aimTurret(current, robot, Alliance.current);
+            }
+            // Flywheel: live far interpolation while collecting, but latch to the
+            // interpolated shoot-pose value on the final run-in so it is spun up on
+            // arrival instead of chasing it. Same interpolation value the shot uses -
+            // shot speed unchanged, only the approach spins up eagerly.
+            if (aimTargetPose != null) {
+                double dist = Math.hypot(aimTargetPose.getX() - current.getX(),
+                        aimTargetPose.getY() - current.getY());
+                if (dist <= APPROACH_SPINUP_DISTANCE) {
+                    Pose turretPose = TurretLocation.getTurretPose(aimTargetPose);
+                    robot.shooter.setTarget(WaveLength.getFarVelocityWithInterpolation(turretPose, Alliance.current));
+                    robot.shooter.setHoodPosition(WaveLength.getFarHoodWithInterpolation(turretPose, Alliance.current));
+                } else {
+                    robot.shooter.useFarInterpolation();
+                }
+            }
         }
 
         super.loop();
@@ -239,31 +292,58 @@ public abstract class FarZoneAuto extends RobotOpMode {
      * are already full so a wedged 4th ball can't fight it, then fire. Keeping the
      * intake running below 3 balls lets us keep grabbing right up to the shot.
      */
-    private Command seatThenShoot() {
-        return waitMs(PICKUP_SEAT_MS)
-                .then(conditional(() -> robot.spindexer.getBallCount() >= 3,
-                        intakeOff(),
-                        noOp()))
-                .then(shootWhenReady());
+    /**
+     * At a shoot pose (end of a return path): stop indexing, reverse the intake to spit
+     * out any 4th artifact wedged at the intake, then fire. This guarantees we never shoot
+     * with 4 loaded. The eject window runs IN PARALLEL with the shot-readiness settle
+     * (flywheel/pose/heading/turret) rather than before it, so we wait max(eject, settle)
+     * instead of eject + settle - the settle is usually already done on arrival, so the
+     * eject window is the only real wait.
+     */
+    private Command ejectThenShoot() {
+        return robot.spindexer.setIntaking(false)
+                .then(robot.intake.reverse())
+                .then(parallel(
+                        waitMs(EJECT_REVERSE_MS),
+                        waitUntil(this::shotReady).raceWith(waitMs(SHOOT_READY_TIMEOUT_MS))))
+                .then(robot.intake.off())
+                .then(fireVolley());
     }
 
     /**
-     * Wait until the flywheel is up to speed AND the robot is close to the shoot pose
-     * AND the turret has aimed, then rotate the spindexer to fire and wait for that
-     * rotation to finish. Both waits are timeout-capped so the routine always advances.
+     * Ready to fire: flywheel up to speed, robot on the shoot pose, CHASSIS settled onto
+     * the shoot heading (so the fixed turret aim is correct), and the turret at target.
+     */
+    private boolean shotReady() {
+        return robot.shooter.atTarget()
+                && nearShootPose()
+                && chassisSettled()
+                && robot.turret.atTarget(TURRET_AIM_TOLERANCE_DEG);
+    }
+
+    /**
+     * Rotate the spindexer to fire the whole volley, then wait for it to finish - i.e. all
+     * balls are out - before moving on, so the robot never drives off mid-volley. The wait
+     * is timeout-capped so a stuck spindexer can't stall the routine.
+     */
+    private Command fireVolley() {
+        return robot.spindexer.rotateShootCW()
+                .then(waitUntil(() -> !robot.spindexer.isMoving())
+                        .raceWith(waitMs(SHOOT_FIRE_TIMEOUT_MS)));
+    }
+
+    /**
+     * Wait until the shot is lined up (or the ready timeout elapses), then fire. Used for
+     * the preload, which has no eject step.
      */
     private Command shootWhenReady() {
         return shootWhenReady(SHOOT_READY_TIMEOUT_MS);
     }
 
     private Command shootWhenReady(long readyTimeoutMs) {
-        return waitUntil(() -> robot.shooter.atTarget()
-                        && nearShootPose()
-                        && robot.turret.atTarget(TURRET_AIM_TOLERANCE_DEG))
+        return waitUntil(this::shotReady)
                 .raceWith(waitMs(readyTimeoutMs))
-                .then(robot.spindexer.rotateShootCW())
-                .then(waitUntil(() -> !robot.spindexer.isMoving())
-                        .raceWith(waitMs(SHOOT_ROTATE_TIMEOUT_MS)));
+                .then(fireVolley());
     }
 
     /**
@@ -304,8 +384,8 @@ public abstract class FarZoneAuto extends RobotOpMode {
     }
 
     /**
-     * Corner throttle: HALF_POWER only while the robot is driving INWARD (authored x
-     * decreasing, toward x=0) through the stack band [CORNER_SLOW_MIN_X, MAX_X]; full
+     * Corner throttle: CORNER_INTAKE_POWER only while the robot is driving INWARD (authored
+     * x decreasing, toward x=0) through the stack band [CORNER_SLOW_MIN_X, MAX_X]; full
      * power otherwise, including the whole way back out. Inward is detected from the
      * authored-x delta between loops, so it works on both alliances (x is un-mirrored to
      * the authored frame first) and only slows the approach, not the exit.
@@ -321,7 +401,7 @@ public abstract class FarZoneAuto extends RobotOpMode {
                 if (movingInward
                         && authoredX >= CORNER_SLOW_MIN_X
                         && authoredX <= CORNER_SLOW_MAX_X) {
-                    power = HALF_POWER;
+                    power = CORNER_INTAKE_POWER;
                 }
                 lastAuthoredX = authoredX;
             }
@@ -330,8 +410,8 @@ public abstract class FarZoneAuto extends RobotOpMode {
     }
 
     /** Aim bias: authored for BLUE, negated for RED so the physical correction matches. */
-    private double turretOffset() {
-        return mirror ? -TURRET_AIM_OFFSET_DEGREES : TURRET_AIM_OFFSET_DEGREES;
+    private double turretOffset(double blueOffsetDegrees) {
+        return mirror ? -blueOffsetDegrees : blueOffsetDegrees;
     }
 
     /** True once the robot is within SHOOT_POSE_TOLERANCE_IN of the current shoot pose. */
@@ -342,21 +422,34 @@ public abstract class FarZoneAuto extends RobotOpMode {
                 <= SHOOT_POSE_TOLERANCE_IN;
     }
 
+    /**
+     * True once the chassis heading has settled onto the shoot pose heading. The turret
+     * aims at the FIXED pose (which assumes the chassis is at that heading), so we hold
+     * the shot until the chassis has actually finished turning onto it - otherwise the
+     * fixed aim would be off by however far the chassis still had to turn.
+     */
+    private boolean chassisSettled() {
+        Pose p = robot.drivetrain.getPose();
+        if (p == null || aimTargetPose == null) return false;
+        double errDeg = ((Math.toDegrees(p.getHeading() - aimTargetPose.getHeading()) + 540) % 360) - 180;
+        return Math.abs(errDeg) <= HEADING_SETTLE_TOLERANCE_DEG;
+    }
+
     // ----- geometry ---------------------------------------------------------
 
     /** Far shoot point the preload is fired from, and where the robot starts. */
     private Pose startPose() {
-        return pose(65, 8.5, START_HEADING_DEG);
+        return pose(63.74, 8.235, START_HEADING_DEG);
     }
 
     /** Shoot point after the ROW return (seg 3's reversed-tangent arrival heading). */
     private Pose shootPoseRow() {
-        return pose(52.5, 13, SHOOT_HEADING_ROW_DEG);
+        return pose(58, 11, SHOOT_HEADING_ROW_DEG);
     }
 
-    /** Shoot point after a CORNER return (seg 7's reversed-tangent arrival heading). */
+    /** Shoot point after a CORNER return (reversed-tangent arrival heading). */
     private Pose shootPoseCorner() {
-        return pose(52.5, 13, SHOOT_HEADING_CORNER_DEG);
+        return pose(58, 11, SHOOT_HEADING_CORNER_DEG);
     }
 
     private void buildPaths() {
@@ -369,33 +462,38 @@ public abstract class FarZoneAuto extends RobotOpMode {
         // its facing lines up with seg 2 at 180, no heading jump) and stays high, only
         // dropping to the shoot point near the end - it no longer dips down the left
         // side. Arrives ~128 deg (efficient; the exact end heading is free here).
-        rowRun = robot.drivetrain.follower.pathBuilder()
-                .addPath(new BezierCurve(point(65, 8.5), point(65, 35.5), point(40.5, 35.5)))
+        // Collection: approach curve + straight sweep, one CONTINUOUS chain (no stop
+        // between them). The routine then pauses ROW_SWEEP_END_WAIT_MS at the sweep end
+        // before following rowReturn back to the shoot point.
+        rowCollect = robot.drivetrain.follower.pathBuilder()
+                .addPath(new BezierCurve(point(63.74, 8.235), point(63.74, 35.5), point(40.5, 35.5)))
                 .setTangentHeadingInterpolation()
-                .addPath(new BezierLine(point(40.5, 35.5), point(13.5, 35.5)))
+                .addPath(new BezierLine(point(40.5, 35.5), point(11.5, 35.5)))
                 .setTangentHeadingInterpolation()
-                .addPath(new BezierCurve(point(13.5, 35.5), point(35, 35.5), point(52.5, 13)))
+                .build();
+        rowReturn = robot.drivetrain.follower.pathBuilder()
+                .addPath(new BezierCurve(point(11.5, 35.5), point(35, 35.5), point(58, 11)))
                 .setTangentHeadingInterpolation()
                 .setReversed()
                 .build();
 
-        // Corner-stack sweep, one smooth chain re-followed each cycle: go back UP to the
-        // top (14,45), a rounded ~180 U-turn (allowed), then a fast-turning dive down and
-        // out to the second point (12,18.5), and a clean reversed-tangent back to the shoot
-        // point (arriving ~west, so the turret stays in range). Control points keep it
-        // smooth; the up and return legs are tangential (chassis follows the arc), the
-        // dive uses the given 135 -> -130 heading and finishes that turn FAST (endTime
-        // 0.3) so it is settled before it reaches the second point. Full speed; the
-        // inward zone still eases it near the stack.
-        //   seg 1  curve  shoot -> top (14,45)       tangential (arrives ~135 into seg 2)
-        //   seg 2  curve  top -> second (12,18.5)      linear 135 -> -130, fast (endTime .3)
-        //   seg 3  curve  second -> shoot            tangential reversed (arrives ~west)
-        cornerCycle = robot.drivetrain.follower.pathBuilder()
-                .addPath(new BezierCurve(point(52.5, 13), point(35, 24), point(14, 45)))
+        // Human-player corner cycle, split into the intake pass (cornerOut) and the
+        // return (cornerReturn) so the robot can DWELL at the end of the intake - in the
+        // corner, where it just collected - instead of after the shot. cornerOut runs
+        // straight up-left to (12,22), then straight down to (12,11) holding a CONSTANT
+        // -130 deg heading. cornerReturn is the reversed-tangent back to the shoot point
+        // (52.5,11), arriving ~west so the turret stays in range. Both re-followed each cycle.
+        //   out  path 4  line   shoot -> (13,33)        tangential
+        //   out  path 5  line   (13,33) -> (13,12)      constant -130
+        //   return path 6  curve  (13,12) -> shoot        tangential reversed (arrives ~174)
+        cornerOut = robot.drivetrain.follower.pathBuilder()
+                .addPath(new BezierLine(point(58, 11), point(16, 20)))
                 .setTangentHeadingInterpolation()
-                .addPath(new BezierCurve(point(14, 45), point(18, 33), point(12, 18.5)))
-                .setLinearHeadingInterpolation(hdg(135), hdg(-130), 0.3)
-                .addPath(new BezierCurve(point(12, 18.5), point(33, 15), point(52.5, 13)))
+                .addPath(new BezierLine(point(16, 20), point(16, 15)))
+                .setConstantHeadingInterpolation(hdg(-120))
+                .build();
+        cornerReturn = robot.drivetrain.follower.pathBuilder()
+                .addPath(new BezierCurve(point(16, 15), point(33, 15), point(58, 11)))
                 .setTangentHeadingInterpolation()
                 .setReversed()
                 .build();
