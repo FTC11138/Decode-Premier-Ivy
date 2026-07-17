@@ -78,6 +78,10 @@ public abstract class FarZoneAuto extends RobotOpMode {
     // both alliances (see cornerSlowControl()).
     private static final double CORNER_SLOW_MIN_X = 14.0;
     private static final double CORNER_SLOW_MAX_X = 24.0;
+    // RED only: shift the human-player (corner) cycle waypoints this far in +x (field), so
+    // the robot reaches further toward the RED corner. BLUE is unaffected. Flip the sign to
+    // reverse the direction. See cornerPoint().
+    private static final double RED_CORNER_X_SHIFT = 4.0;
     // Ignore sub-noise x changes when deciding "moving inward" so pose jitter at the
     // turnaround doesn't flicker the throttle.
     private static final double INWARD_EPSILON_IN = 0.05;
@@ -88,6 +92,10 @@ public abstract class FarZoneAuto extends RobotOpMode {
     // the row/gate shots a little less right. Adjust the magnitudes from field results.
     private static final double FIRST_SHOT_TURRET_OFFSET_DEGREES = -6.0;  // preload: dialed in, keep
     private static final double REST_SHOT_TURRET_OFFSET_DEGREES = -2.0;   // row+gate: nudged left from -4
+    // RED only: extra bias added on top of the mirrored offset (negative = right). Applied
+    // where the offset is set, so BLUE is unaffected.
+    private static final double RED_FIRST_SHOT_EXTRA_DEGREES = -5.0;      // preload: 5 more
+    private static final double RED_REST_SHOT_EXTRA_DEGREES = -2.0;       // row+gate: 2 more
 
     // Generous per-drive safety timeout: only fires if a follower gets stuck. Normal
     // drives finish well under it because followWithTimeout also races the follower's
@@ -171,7 +179,8 @@ public abstract class FarZoneAuto extends RobotOpMode {
         robot.turret.setStartingAngle(Constants.turretHomedAngleDegrees);
         robot.turret.enableAutoAim();
         // Constant aim bias for the whole run (mirrored for RED). Held, never retargeted.
-        Constants.turretAimOffsetDegrees = turretOffset(FIRST_SHOT_TURRET_OFFSET_DEGREES);
+        Constants.turretAimOffsetDegrees = turretOffset(FIRST_SHOT_TURRET_OFFSET_DEGREES)
+                + (mirror ? RED_FIRST_SHOT_EXTRA_DEGREES : 0.0);
         // Auto shoot: suppress ball detection until each ~480-deg volley rotation finishes.
         robot.spindexer.setAutoMode(true);
 
@@ -190,7 +199,8 @@ public abstract class FarZoneAuto extends RobotOpMode {
                 .then(shootWhenReady(FIRST_SHOOT_READY_TIMEOUT_MS))
                 // Preload fired: switch to the rest-shot turret bias for every other shot.
                 .then(instant(() -> Constants.turretAimOffsetDegrees =
-                        turretOffset(REST_SHOT_TURRET_OFFSET_DEGREES)))
+                        turretOffset(REST_SHOT_TURRET_OFFSET_DEGREES)
+                                + (mirror ? RED_REST_SHOT_EXTRA_DEGREES : 0.0)))
                 // ----- last row (segs 1-3, one continuous drive) -----
                 .then(instant(() -> aimTargetPose = shootPoseRow()))
                 // Intake on before the run so it is fully spun up entering the row.
@@ -439,6 +449,10 @@ public abstract class FarZoneAuto extends RobotOpMode {
 
     /** Far shoot point the preload is fired from, and where the robot starts. */
     private Pose startPose() {
+        // RED uses an explicit field start pose (not the mirrored BLUE start).
+        if (mirror) {
+            return new Pose(79.44, 8.13, Math.toRadians(90));
+        }
         return pose(63.74, 8.235, START_HEADING_DEG);
     }
 
@@ -487,13 +501,13 @@ public abstract class FarZoneAuto extends RobotOpMode {
         //   out  path 5  line   (13,33) -> (13,12)      constant -130
         //   return path 6  curve  (13,12) -> shoot        tangential reversed (arrives ~174)
         cornerOut = robot.drivetrain.follower.pathBuilder()
-                .addPath(new BezierLine(point(58, 11), point(16, 20)))
+                .addPath(new BezierLine(point(58, 11), cornerPoint(16, 20)))
                 .setTangentHeadingInterpolation()
-                .addPath(new BezierLine(point(16, 20), point(16, 15)))
+                .addPath(new BezierLine(cornerPoint(16, 20), cornerPoint(16, 15)))
                 .setConstantHeadingInterpolation(hdg(-120))
                 .build();
         cornerReturn = robot.drivetrain.follower.pathBuilder()
-                .addPath(new BezierCurve(point(16, 15), point(33, 15), point(58, 11)))
+                .addPath(new BezierCurve(cornerPoint(16, 15), cornerPoint(33, 15), point(58, 11)))
                 .setTangentHeadingInterpolation()
                 .setReversed()
                 .build();
@@ -502,6 +516,11 @@ public abstract class FarZoneAuto extends RobotOpMode {
     /** A geometric point (heading irrelevant to a Bezier); x mirrored for RED. */
     private Pose point(double x, double y) {
         return new Pose(mirror ? FIELD_WIDTH - x : x, y);
+    }
+
+    /** Corner-cycle point: like point(), plus a RED-only +RED_CORNER_X_SHIFT field-x shift. */
+    private Pose cornerPoint(double x, double y) {
+        return new Pose(mirror ? FIELD_WIDTH - x + RED_CORNER_X_SHIFT : x, y);
     }
 
     /** A full pose (heading matters); x and heading mirrored for RED. */
